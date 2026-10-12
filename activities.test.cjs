@@ -87,3 +87,11 @@ assert.equal(ba({result:true},{active:true}),'return');
 assert.equal(ba({result:true,firstWin:true},{active:false}),'return');
 assert.equal(ba({result:false,isCtaClicked:true},{active:true}),'wait');
 console.log('PASS: Boss start, phase guards, pending/complete guards, retry and result return');
+
+const bossPortal=entity(10,{canInteract:false,getNextLevel:()=> 'map_boss'});
+const bh={label:'map_hub',managers:{entity:{player,entities:[bossPortal]}}};
+assert.equal(target(bh,'boss'),bossPortal,'native auto portal need not have canInteract');
+bossPortal.getNextLevel=undefined;bossPortal.properties={get:()=>[{name:'teleport_map',value:'map_boss.json'}]};
+assert.equal(target(bh,'boss'),bossPortal,'native destination includes json extension');
+bossPortal.isLocked=()=>true;assert.equal(target(bh,'boss'),undefined,'locked portal excluded');
+console.log('PASS: native Boss portal, json suffix and locked entry');

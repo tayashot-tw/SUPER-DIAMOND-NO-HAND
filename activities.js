@@ -20,7 +20,7 @@
       if(player.inBattle)return near(p,(manager?.hunting?.battleMonsters??[]).filter(e=>!e.destroyed&&!e.isDead&&e.enabled!==false));
       return near(p,entities.filter(e=>active(e)&&e.label==='portal_to_monster_play'));
     }
-    if(mode==='boss'&&level.label==='map_hub')return near(p,entities.filter(e=>active(e)&&usable(e)&&(e.properties?.get?.()??[]).some(prop=>String(prop.value).split(',')[0]==='map_boss')));
+    if(mode==='boss'&&level.label==='map_hub')return near(p,entities.filter(e=>e&&!e.destroyed&&e.enabled!==false&&!e.isLocked?.()&&usable(e)&&(e.getNextLevel?.()==='map_boss'||(e.properties?.get?.()??[]).some(prop=>prop.name==='teleport_map'&&String(prop.value).trim().replace(/\.json$/,'')==='map_boss'))));
     if(mode==='boss'){const boss=manager?.boss?.boss;return boss&&!boss.destroyed&&!boss.isDead&&boss.enabled!==false?boss:null;}
     if(mode==='treasury'){
       const treasures=entities.filter(e=>active(e)&&usable(e)&&e.status==='success');

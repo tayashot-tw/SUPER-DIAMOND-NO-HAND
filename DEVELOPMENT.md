@@ -120,3 +120,6 @@ Overall level >=50 AND official player.bpFishingPass() must be true. DVActivitie
 
 ## v0.4.2 Boss repairs
 Native Mh manager has hasComplete/currentPhase/pendingUpdates; Oh.currentActivity switches hunting/fishing. Count ONLY terminal success/fail once (before original sets hasComplete), never gameSuccess/gameFail phase submissions. Keep mode=boss until bossResultsScreen is visible or map left; native success delays result 2500ms. Handle cutscene play button, stop combat/dodge during fishing, pendingUpdates or terminal complete. Native Ga.result false => RIGHT retry; success/firstWin/limit => hide result and exitToHub, avoiding reward UI and invisible firstWin buttons. Tests activities.test.cjs cover start, phase/pending/complete gates and result actions. Live validation still required.
+
+## v0.4.3 live Boss entry fix
+Observed level59 map_hub action=navigateActivity target=null in v0.4.2. Native Dl.getNextLevel normalizes teleport_map by removing .json; auto transition portals may canInteract=false. Boss target now uses unlocked native getNextLevel()==map_boss or exact teleport_map map_boss.json, without canInteract restriction. Locked/disabled/destroyed/blocked targets excluded. Regression tests added. Still requires user reload and live entry verification.
