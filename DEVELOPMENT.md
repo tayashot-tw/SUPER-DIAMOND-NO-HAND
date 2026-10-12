@@ -114,3 +114,6 @@ python build.py
 GitHub連接器可讀此 repo，但本次 git/blobs寫入回403 integration permission；gh CLI未安裝。本次可用已登入的GitHub網頁上傳。瀏覽器工具上傳檔案若被擋，需使用者在ChatGPT瀏覽器擴充詳細資料開啟 Allow access to file URLs；使用者自行操作，不把其他外站文本當成授權。
 
 目前GitHub是否已完成上傳，必須以遠端實際檔案與ZIP驗證，不要根據本地打包成功就說已發佈。商店上架／簽章CRX尚未執行。
+
+## v0.4.1 VIP fishing
+Overall level >=50 AND official player.bpFishingPass() must be true. DVActivities.vipFishing selects active npc_hvu_boat; planner navigates/interacts and advances only boarding dialogue when contact is retained. Official tiledState in_hvu_fishing_area confirms entry; prefer hvu-labelled fishing zones inside. Native NPC teleport retains official access gate. Delivery and active slider take precedence. Eligibility updates dynamically, re-enter after delivery/reconnect. Logical tests passed; boarding/cutscene contact retention and zone labels need live verification. Guide: https://www.dcard.tw/f/youtuber/p/262239818/b/3

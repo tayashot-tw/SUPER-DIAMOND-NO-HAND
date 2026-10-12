@@ -174,6 +174,7 @@
   function snapshot(){
     const world=getWorld(),level=world?.managers?.level?.currentLevel,services=world?.services,player=level?.managers?.entity?.player;
     const data=signal(services?.player?.data),inventory=inventoryState;
+    const vip=globalThis.DVActivities.vipFishing(level,services,data,available);
     const fishingData=inventory?.[mode];
     const fishingManager=level?.managers?.[mode],slider=mode==='boss'?fishingManager?.boss?.timedClickSlider:level?.managers?.fishing?.fishing?.timedClickSlider;
     const quest=questState?.[mode]?.quest??data?.activities_data?.[mode]?.next_quest;
@@ -198,6 +199,7 @@
       diamonds:subject(services?.auth?.userData$)?.data?.total_diamonds,itemCount,bagFull:!!fishingData?.is_full,
       questSubmissions:data?.quest_submissions_today,questReady:globalThis.DVActivities.stockPolicy(mode,fishingData?.items,quest,settings.deliveryMultiplier).ready,
       fishingUnlocked:!!data?.activities_data?.fishing?.has_played,
+      vipWanted:mode==='fishing'&&vip.eligible&&!vip.inside, vipBoatAvailable:!!vip.boat, atVipBoat:!!vip.boat&&hasContact(player,vip.boat),
       masteryMax:!!(data&&fishingManager?.maxMasteryLevel?.(data)),
       inHub:level?.label==='map_hub',inFishing:!!fishingManager,
       atFishing:!!player?.collidedObj&&isFishingArea(player.collidedObj),
@@ -241,9 +243,10 @@
   window.addEventListener('keydown',event=>{if(event.isTrusted&&event.code==='Escape'){enabled=false;release();post('halt',{message:'已按 Esc 停止'});}});
   function execute(action,s){
     const world=getWorld(),level=world?.managers?.level?.currentLevel;
-    if(!['navigateFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
+    if(!['navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
     switch(action.type){
       case 'interact':if(mode!=='mining'||!miningInteraction(level))interact();break;
+      case 'navigateVipFishing':{const vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);if(vip.boat)navigate(level,vip.boat);else retry('VIP 管理員暫時不可用，等待重新搜尋');break;}
       case 'travelFishing':transition(level,'travelFishing',()=>world.services.rpg.teleport('waypoint_fishing'));break;
       case 'travelActivity':transition(level,'travelActivity',()=>world.services.rpg.teleport(`waypoint_${mode}`));break;
       case 'exitFishing':{const manager=level.managers[mode]??level.managers.fishing??level.managers.mining??level.managers.hunting??level.managers.boss;if(manager?.exitToHub)transition(level,'exitActivity',()=>{findResult(world)?.hide?.();manager.exitToHub();});else retry('等待目前地圖的退出操作');break;}
@@ -254,7 +257,9 @@
       case 'startTreasury':clickButton(findPlayButton(world));break;
       case 'activityResult':{const result=findResult(world);if(result&&!result.isCtaClicked){release();if(requestedMode==='random'&&level.managers[mode]?.exitToHub){transition(level,'exitResult',()=>{result.hide();level.managers[mode].exitToHub();});rotate=true;}else{const b=result.resultType===false||result.result===false?result.rightButton:result.leftButton;clickButton(b);}}break;}
       case 'navigateFishing':{
-        const areas=fishingAreas(level);
+        const allAreas=fishingAreas(level),vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);
+        const exclusive=vip.inside?allAreas.filter(e=>String(e.label??'').includes('hvu')):[];
+        const areas=exclusive.length?exclusive:allAreas;
         const current=pathMap===level?areas.find(e=>targetKey(e)===pathTarget):null;
         const chosen=current??areas[0];
         if(chosen){missingSince=null;navigate(level,chosen);}else{missingSince??=Date.now();retry('沒有可到達的釣魚點，等待後重新搜尋');if(Date.now()-missingSince>120000&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:'釣魚目標持續無法到達'});}}break;

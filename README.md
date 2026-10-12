@@ -1,6 +1,6 @@
 # SUPER DIAMOND NO HAND
 
-使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.0**。
+使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.1**。
 
 ## 風險與實測狀態
 
@@ -10,8 +10,8 @@
 
 ## 下載與安裝
 
-- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.0.zip)
-- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.0.zip)
+- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.1.zip)
+- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.1.zip)
 
 這是供使用者自行載入的未封裝來源 ZIP，**並非瀏覽器商店上架或已簽章 CRX**。GitHub ZIP 頁面按下載圖示或 Download raw file，再解壓縮到固定資料夾。
 
@@ -22,7 +22,7 @@
 3. 按「載入解壓縮」，選擇解壓縮後包含 `manifest.json` 的資料夾。
 4. 停用舊版 Diamond Valley 套件，避免重複執行。
 5. 在 Edge 開啟 [台灣版遊戲](https://diamondvalley.withgoogle.com/intl/ALL_tw/game/)，登入並完成對應玩法教學。
-6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.0」。
+6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.1」。
 
 ### Chrome
 
@@ -88,3 +88,7 @@ python build.py
 ## 支持開發／贊助
 
 若本專案對你有幫助，可透過 [PayPal 支持 tayashot](https://paypal.me/tayashot)。贊助完全自願，不影響使用功能，也不保證遊戲獎勵、帳號安全或後續維護。
+
+## 50 等 VIP 釣魚
+
+釣魚模式（含隨機輪替的釣魚回合）在角色整體等級達到 50，且官方 bp_fishing_pass 資格已生效時，自動尋路到船隻管理員、繼續登船對話，進入 VIP 釣魚區。每次交貨返回後會重新登船。正在釣魚時先完成本輪，交貨優先；沒有船票或入口不可用時繼續一般釣魚。不修改資格或獎勵。新增登船流程已通過邏輯測試，實機仍待驗證。

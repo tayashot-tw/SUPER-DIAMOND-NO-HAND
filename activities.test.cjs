@@ -52,3 +52,23 @@ assert.equal(stockPolicy('fishing',stocks('FISH',41).slice(1),{quantity:10}).rea
 assert.equal(stockPolicy('hunting',stocks('HERB',41).map((r,i)=>({...r,quantity:i===2?39:41})),{quantity:10}).ready,false,'every type must exceed its threshold');
 assert.equal(stockPolicy('mining',stocks('GEM',100),null).ready,false,'unknown quest never invents a requirement');
 console.log('PASS: all resource types and strict four-times delivery threshold');
+
+const {vipFishing}=globalThis.DVActivities;
+const boat=entity(20,{label:'npc_hvu_boat'});
+const vipLevel={managers:{entity:{player,entities:[boat]}}};
+const svc={player:{bpFishingPass:()=>true},tiledState:{getAll:()=>[]}};
+assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:49}}).boat,null);
+assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:50}}).boat,boat);
+assert.equal(vipFishing(vipLevel,{...svc,player:{bpFishingPass:()=>false}},{overall_level:{level:50}}).eligible,false);
+svc.tiledState.getAll=()=>['in_hvu_fishing_area'];
+assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:50}}).inside,true);
+require('./planner.js');
+const fp=new globalThis.DVAutoplay.Autoplayer();fp.connectedAt=0;
+const fs={enabled:true,ready:true,online:true,connected:true,visible:true,inFishing:true,vipWanted:true,vipBoatAvailable:true};
+assert.equal(fp.decide(fs,5000).type,'navigateVipFishing');
+assert.equal(fp.decide({...fs,atVipBoat:true},6000).type,'interact');
+assert.equal(fp.decide({...fs,atVipBoat:true,storyOpen:true,storyCanContinue:true,otherDialog:true},7000).type,'advanceStory');
+assert.equal(fp.decide({...fs,questReady:true},8000).type,'exitFishing');
+assert.equal(fp.decide({...fs,vipWanted:false,atFishing:true,canPlay:true},9000).type,'interact');
+console.log('PASS: VIP level boundary, server pass, boarding, dialogue, delivery priority and resume');
+

@@ -123,6 +123,10 @@
         if(!s.canSubmit&&now-this.lastAction>=1800){this.lastAction=now;return {type:'closeSubmission',message:'交貨完成，返回釣魚'};}
         return {type:'wait',message:'等待交貨介面更新'};
       }
+      if(s.vipWanted&&s.atVipBoat&&s.storyOpen){
+        if(s.storyCanContinue&&now-this.lastAction>=700){this.lastAction=now;return {type:'advanceStory',message:'繼續登船對話'};}
+        return {type:'wait',message:'等待 VIP 登船對話'};
+      }
       if(s.otherDialog)return {type:'wait',message:'等待其他介面關閉'};
       if(s.masteryMax&&!s.questReady)return {type:'halt',message:'釣魚熟練度已達上限；本版自動釣魚完成'};
       if(s.bagFull&&!s.questReady)return {type:'halt',message:'背包已滿但交貨物品不足，需處理背包後再開始'};
@@ -137,6 +141,10 @@
         this.lastAction=now;return {type:'travelFishing',message:'使用已解鎖的釣魚傳送點'};
       }
       if(!s.inFishing)return {type:'halt',message:'本版支援城鎮與釣魚地圖，請先返回城鎮'};
+      if(s.vipWanted&&s.vipBoatAvailable){
+        if(s.atVipBoat){this.lastAction=now;return {type:'interact',message:'與船隻管理員互動，進入 VIP 釣魚區'};}
+        return {type:'navigateVipFishing',message:'50 等已取得船票，前往 VIP 釣魚區'};
+      }
       if(s.atFishing&&s.canPlay){this.lastAction=now;return {type:'interact',message:'在釣魚區開始下一次釣魚'};}
       if(s.atFishing)return {type:'wait',message:'等待釣魚結果與背包同步'};
       return {type:'navigateFishing',message:'依地圖碰撞資料尋路到釣魚區'};

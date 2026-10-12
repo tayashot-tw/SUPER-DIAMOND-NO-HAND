@@ -30,6 +30,13 @@
     }
     return null;
   }
+  function vipFishing(level,services,data,usable=()=>true){
+    const entities=level?.managers?.entity?.entities??[],player=level?.managers?.entity?.player;
+    const eligible=Number(data?.overall_level?.level)>=50&&services?.player?.bpFishingPass?.()===true;
+    const inside=services?.tiledState?.getAll?.()?.includes('in_hvu_fishing_area')===true;
+    const boat=eligible&&player?.body?near(center(player),entities.filter(e=>active(e)&&usable(e)&&e.label==='npc_hvu_boat')):null;
+    return {eligible,inside,boat};
+  }
   function stockPolicy(mode,items,quest,multiplier=4){
     const suffix={fishing:'FISH',mining:'GEM',hunting:'HERB'}[mode];
     const quantity=Number(quest?.quantity),required=Number.isFinite(quantity)&&quantity>0?quantity:null;
@@ -70,5 +77,5 @@
       return {type:'navigateActivity',message:`尋路至${names[s.mode]}目標`};
     }
   }
-  globalThis.DVActivities={ActivityPlanner,target,names,stockPolicy};
+  globalThis.DVActivities={ActivityPlanner,target,names,stockPolicy,vipFishing};
 })();

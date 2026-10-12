@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Diamond Valley 自動遊玩",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "依即時狀態自動釣魚、挖礦及打怪，含隨機輪替與斷線恢復；Boss、寶庫為測試模式。",
   "permissions": [
     "storage"
