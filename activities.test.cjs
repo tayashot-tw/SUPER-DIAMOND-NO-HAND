@@ -72,3 +72,18 @@ assert.equal(fp.decide({...fs,questReady:true},8000).type,'exitFishing');
 assert.equal(fp.decide({...fs,vipWanted:false,atFishing:true,canPlay:true},9000).type,'interact');
 console.log('PASS: VIP level boundary, server pass, boarding, dialogue, delivery priority and resume');
 
+
+const bp=new ActivityPlanner();
+const bs={...state,mode:'boss',inActivity:true};
+assert.equal(bp.decide({...bs,storyOpen:true,bossStartButton:true},10000).type,'startBoss');
+assert.equal(bp.decide({...bs,inBattle:true,bossPhase:'fishing'},11000).type,'wait');
+assert.equal(bp.decide({...bs,inBattle:true,bossPending:true},12000).type,'wait');
+assert.equal(bp.decide({...bs,inBattle:true,bossComplete:true},13000).type,'wait');
+assert.equal(bp.decide({...bs,inBattle:true,bossPhase:'hunting'},14000).type,'combat');
+const ba=globalThis.DVActivities.bossResultAction;
+assert.equal(ba({result:false},{active:true}),'retry');
+assert.equal(ba({result:false},{active:false}),'return');
+assert.equal(ba({result:true},{active:true}),'return');
+assert.equal(ba({result:true,firstWin:true},{active:false}),'return');
+assert.equal(ba({result:false,isCtaClicked:true},{active:true}),'wait');
+console.log('PASS: Boss start, phase guards, pending/complete guards, retry and result return');

@@ -30,6 +30,11 @@
     }
     return null;
   }
+  function bossResultAction(result,controller){
+    if(!result||result.isCtaClicked)return 'wait';
+    if(result.result===true||result.firstWin||!controller.active)return 'return';
+    return 'retry';
+  }
   function vipFishing(level,services,data,usable=()=>true){
     const entities=level?.managers?.entity?.entities??[],player=level?.managers?.entity?.player;
     const eligible=Number(data?.overall_level?.level)>=50&&services?.player?.bpFishingPass?.()===true;
@@ -55,6 +60,7 @@
       if(['boss','treasury'].includes(s.mode)&&s.storyOpen){
         if(now-this.lastAction<700)return {type:'wait',message:'等待對話更新'};
         if(s.storyCanContinue){this.lastAction=now;return {type:'advanceStory',message:'繼續目前遊戲劇情'};}
+        if(s.mode==='boss'&&s.bossStartButton){this.lastAction=now;return {type:'startBoss',message:'開始 Boss 挑戰'};}
         if(s.treasuryStartButton){this.lastAction=now;return {type:'startTreasury',message:'開始寶庫挑戰'};}
         return {type:'wait',message:'對話需要確認選項，暫停自動操作'};
       }
@@ -70,6 +76,7 @@
       }
       if(!s.inActivity)return {type:'halt',message:`請先進入${names[s.mode]}地圖；此模式不會穿越未解鎖區域`};
       if(s.mode==='hunting'&&s.inBattle)return {type:'combat',message:'追蹤史萊姆，保持攻擊距離'};
+      if(s.mode==='boss'&&(s.bossComplete||s.bossPhase==='fishing'||s.bossPending))return {type:'wait',message:'等待 Boss 階段／結果同步'};
       if(s.mode==='boss'&&!s.inBattle)return {type:'wait',message:'等待 Boss 戰鬥／釣魚階段切換'};
       if(s.mode==='boss')return {type:'combat',message:'接近 Boss 並由遊戲自動攻擊；釣魚階段自動判斷指針'};
       if(s.mode==='treasury'&&!s.treasuryActive)return {type:s.targetCollided?'interact':'navigateActivity',message:'前往寶庫挑戰說明 NPC'};
@@ -77,5 +84,5 @@
       return {type:'navigateActivity',message:`尋路至${names[s.mode]}目標`};
     }
   }
-  globalThis.DVActivities={ActivityPlanner,target,names,stockPolicy,vipFishing};
+  globalThis.DVActivities={ActivityPlanner,target,names,stockPolicy,vipFishing,bossResultAction};
 })();

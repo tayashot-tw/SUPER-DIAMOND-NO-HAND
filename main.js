@@ -8,7 +8,7 @@
   let disconnectedAt=null,recoveryRequested=false,lastPulse=0,pendingTransition=null;
   const auditEvents=[],auditedManagers=new WeakSet(),auditedPlayers=new WeakSet();
   const audit=(event,detail)=>{auditEvents.push({event,detail,at:Date.now()});if(auditEvents.length>24)auditEvents.shift();};
-  function auditMining(level){const manager=level?.managers?.[mode];if(!manager||auditedManagers.has(manager))return;auditedManagers.add(manager);const activityMode=mode;for(const name of ['start','playerActivateVein','playerReachedSafezone','complete','die','success','fail']){const original=manager[name];if(typeof original!=='function')continue;manager[name]=function(...args){if(activityMode==='boss'&&['success','fail'].includes(name))bossController.result(name==='success',signal(getWorld()?.services?.player?.data)?.overall_level?.level??0,settings);audit(activityMode+':'+name,['string','boolean'].includes(typeof args[0])?args[0]:null);return original.apply(this,args);};}}
+  function auditMining(level){const manager=level?.managers?.[mode];if(!manager||auditedManagers.has(manager))return;auditedManagers.add(manager);const activityMode=mode;for(const name of ['start','playerActivateVein','playerReachedSafezone','complete','die','success','fail']){const original=manager[name];if(typeof original!=='function')continue;manager[name]=function(...args){if(activityMode==='boss'&&!this.hasComplete&&['success','fail'].includes(name))bossController.result(name==='success',signal(getWorld()?.services?.player?.data)?.overall_level?.level??0,settings);audit(activityMode+':'+name,['string','boolean'].includes(typeof args[0])?args[0]:null);return original.apply(this,args);};}}
   function auditDamage(player){
     if(!player||auditedPlayers.has(player)||typeof player.onShot!=='function')return;
     auditedPlayers.add(player);const original=player.onShot;
@@ -196,6 +196,10 @@
       storyOpen:!!world?.uiManager?.cutsceneUi?.state,
       storyCanContinue:!!world?.uiManager?.cutsceneUi?.state&&!services?.cutscene?.cutsceneRequiresInteraction,
       treasuryStartButton:mode==='treasury'&&!!findPlayButton(world),
+      bossStartButton:mode==='boss'&&!!findPlayButton(world),
+      bossComplete:mode==='boss'&&!!fishingManager?.hasComplete,
+      bossPhase:mode==='boss'?fishingManager?.boss?.currentActivity:null,
+      bossPending:mode==='boss'&&Number(signal(fishingManager?.pendingUpdates)??0)>0,
       diamonds:subject(services?.auth?.userData$)?.data?.total_diamonds,itemCount,bagFull:!!fishingData?.is_full,
       questSubmissions:data?.quest_submissions_today,questReady:globalThis.DVActivities.stockPolicy(mode,fishingData?.items,quest,settings.deliveryMultiplier).ready,
       fishingUnlocked:!!data?.activities_data?.fishing?.has_played,
@@ -254,8 +258,9 @@
       case 'combat':combat(level);break;
       case 'dodge':if(navigationTimer){clearTimeout(navigationTimer);navigationTimer=null;}path=null;routeSearch=null;routeWaypoint=null;routeAxis=null;stuckSince=null;move(action.code);break;
       case 'advanceStory':interact();break;
+      case 'startBoss':
       case 'startTreasury':clickButton(findPlayButton(world));break;
-      case 'activityResult':{const result=findResult(world);if(result&&!result.isCtaClicked){release();if(requestedMode==='random'&&level.managers[mode]?.exitToHub){transition(level,'exitResult',()=>{result.hide();level.managers[mode].exitToHub();});rotate=true;}else{const b=result.resultType===false||result.result===false?result.rightButton:result.leftButton;clickButton(b);}}break;}
+      case 'activityResult':{const result=findResult(world);if(result&&!result.isCtaClicked){release();if(mode==='boss'){const choice=globalThis.DVActivities.bossResultAction(result,bossController);if(choice==='return')transition(level,'exitBossResult',()=>{result.hide();level.managers.boss.exitToHub();});else if(choice==='retry')clickButton(result.rightButton);break;}if(requestedMode==='random'&&level.managers[mode]?.exitToHub){transition(level,'exitResult',()=>{result.hide();level.managers[mode].exitToHub();});rotate=true;}else{const b=result.resultType===false||result.result===false?result.rightButton:result.leftButton;clickButton(b);}}break;}
       case 'navigateFishing':{
         const allAreas=fishingAreas(level),vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);
         const exclusive=vip.inside?allAreas.filter(e=>String(e.label??'').includes('hvu')):[];
@@ -288,11 +293,12 @@
         if(choices.length){const alternatives=choices.filter(k=>k!==mode);const pool=alternatives.length?alternatives:choices;mode=pool[Math.floor(Math.random()*pool.length)];rotate=false;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}
       }
       const currentLevel=getWorld()?.managers?.level?.currentLevel;
+      const bossResultReady=currentLevel?.label!=='map_boss'||!!findResult(getWorld());
       const playerLevel=signal(getWorld()?.services?.player?.data)?.overall_level?.level??0;
-      if(enabled&&requestedMode==='boss'&&!bossController.active&&bossController.returnMode){requestedMode=bossController.returnMode;mode=requestedMode;post('modeFallback',{mode,message:'Boss 挑戰結束，返回任務模式'});clearNavigation();engine.reset();}
+      if(enabled&&requestedMode==='boss'&&!bossController.active&&bossController.returnMode&&bossResultReady){requestedMode=bossController.returnMode;mode=requestedMode;post('modeFallback',{mode,message:'Boss 挑戰結束，返回任務模式'});clearNavigation();engine.reset();}
       if(enabled&&requestedMode!=='boss'){
         if(bossController.active&&!settings.autoBoss)bossController.cancel();
-        if(mode==='boss'&&!bossController.active){mode=bossController.returnMode??(requestedMode==='random'?'fishing':requestedMode);clearNavigation();engine.reset();}
+        if(mode==='boss'&&!bossController.active&&bossResultReady){mode=bossController.returnMode??(requestedMode==='random'?'fishing':requestedMode);clearNavigation();engine.reset();}
         if(mode!=='boss'&&currentLevel?.label==='map_hub'&&!deliveryBatchMode&&bossController.enter(playerLevel,settings,mode)){mode='boss';clearNavigation();engine.reset();}
       }
       auditMining(currentLevel);auditDamage(currentLevel?.managers?.entity?.player);
@@ -329,7 +335,7 @@
       if(globalThis.DVNavigation.shouldReturnFishing(requestedMode,mode,rotate,s))action={type:'exitFishing',message:'本輪釣魚完成，返回城鎮隨機切換玩法'};
       if(enabled&&mode!=='fishing'&&s.fishingOpen)action=s.slider?.visible?gate:{type:'wait',message:'完成目前釣魚回合後再切換玩法'};
       if(enabled&&now<retryAt)action={type:'wait',message:retryMessage};
-      if(enabled&&['mining','hunting','boss'].includes(mode)&&s.ready&&s.visible&&s.online&&s.connected!==false&&!s.loading&&!s.otherDialog&&!s.inputFocused&&!s.resultOpen&&!s.slider?.visible){const player=currentLevel.managers.entity.player;const code=globalThis.DVNavigation.dodge(player,mode==='mining'?currentLevel.managers.mining?.mining?.dangers:globalThis.DVNavigation.combatDangers(currentLevel.managers.entity.entities),polygonList(currentLevel));if(code)action={type:'dodge',code,message:mode==='mining'?'避開落石警示與爆炸區':'避開戰鬥範圍攻擊與投射物'};}
+      if(enabled&&['mining','hunting','boss'].includes(mode)&&!(mode==='boss'&&(s.bossComplete||s.bossPhase==='fishing'||s.bossPending))&&s.ready&&s.visible&&s.online&&s.connected!==false&&!s.loading&&!s.otherDialog&&!s.inputFocused&&!s.resultOpen&&!s.slider?.visible){const player=currentLevel.managers.entity.player;const code=globalThis.DVNavigation.dodge(player,mode==='mining'?currentLevel.managers.mining?.mining?.dangers:globalThis.DVNavigation.combatDangers(currentLevel.managers.entity.entities),polygonList(currentLevel));if(code)action={type:'dodge',code,message:mode==='mining'?'避開落石警示與爆炸區':'避開戰鬥範圍攻擊與投射物'};}
       execute(action,s);errorCount=0;
       if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
     }catch(error){release();clearNavigation();hookError=`遊戲狀態暫時不相容：${error.message}`;if(enabled&&Date.now()>=retryAt){errorCount++;retryAt=Date.now()+3000;retryMessage=hookError;post('retry',{message:hookError,diagnostics:{error:error.message,stack:error.stack}});if(errorCount>=3&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:hookError});}}}
