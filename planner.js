@@ -117,7 +117,7 @@
         return {type:'wait',message:'釣魚中：監看指針與成功區'};
       }
       if(s.submissionOpen){
-        if(s.dailyLimit)return {type:'halt',message:'今日交貨達上限，停止自動遊玩'};
+        if(s.dailyLimit)return {type:'dailyLimit',message:'目前模式今日交貨達上限，切換其他模式'};
         if(s.submitting)return {type:'wait',message:'等待交貨結果'};
         if(s.canSubmit&&now-this.lastAction>=1800){this.lastAction=now;return {type:'submit',message:'交貨取得經驗值'};}
         if(!s.canSubmit&&now-this.lastAction>=1800){this.lastAction=now;return {type:'closeSubmission',message:'交貨完成，返回釣魚'};}

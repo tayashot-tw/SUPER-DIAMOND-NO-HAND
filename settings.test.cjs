@@ -18,3 +18,13 @@ const items=['BLUE','RED','GREEN','YELLOW'].map(c=>({name:c+'_GEM',quantity:26})
 assert.equal(DVActivities.stockPolicy('mining',items,{quantity:10},2.5).ready,true);
 items[0].quantity=25;assert.equal(DVActivities.stockPolicy('mining',items,{quantity:10},2.5).ready,false);
 console.log('PASS: persisted setting validation, custom multiplier, boss level, consecutive failure return, task rearm and success cooldown');
+
+const dr=new globalThis.DVSettings.DailyRotation();
+const dailyData={activities_data:{fishing:{has_played:true},mining:{has_played:true},hunting:{has_played:true}}};
+dr.observe(10);assert.equal(dr.choose('fishing',dailyData),'mining');
+assert.equal(dr.choose('mining',dailyData),'hunting');
+assert.equal(dr.choose('hunting',dailyData),null);
+dr.observe(10);assert.equal(dr.exhausted.size,3);
+dr.observe(0);assert.equal(dr.exhausted.size,0);
+assert.equal(dr.choose('fishing',{activities_data:{mining:{has_played:false},hunting:{has_played:true}}}),'hunting');
+console.log('PASS: daily rotation, exhausted mode exclusion, all-limited wait and server counter reset');

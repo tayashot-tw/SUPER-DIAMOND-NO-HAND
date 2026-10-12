@@ -2,7 +2,7 @@
   'use strict';
   const VERSION='game-6NMIDNT2.js';
   const engine=new globalThis.DVAutoplay.Autoplayer();
-  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();
+  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let dailyWaiting=false,lastDailyRefresh=0;
   const activities=new globalThis.DVActivities.ActivityPlanner();let mode='fishing',requestedMode='fishing',rotate=false,modeStarted=0,lastItemCount=null,deliveryBatchMode=null;
   let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null;
   let disconnectedAt=null,recoveryRequested=false,lastPulse=0,pendingTransition=null;
@@ -239,7 +239,7 @@
   hook();
   window.addEventListener('message',event=>{
     if(event.source!==window||event.origin!==location.origin||event.data?.channel!==channel||event.data.source!=='panel')return;
-    if(event.data.type==='config'){settings=globalThis.DVSettings.normalize(event.data.settings);const nextMode=event.data.mode??'fishing';if(nextMode!==requestedMode&&(globalThis.DVActivities.names[nextMode]||nextMode==='random')){const returnMode=mode==='boss'?'fishing':mode;bossController.cancel();if(nextMode==='boss'){bossController.active=true;bossController.returnMode=returnMode;}deliveryBatchMode=null;requestedMode=nextMode;rotate=nextMode==='random';if(nextMode!=='random')mode=nextMode;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}const nextEnabled=event.data.enabled===true;if(nextEnabled!==enabled){clearNavigation();engine.reset();activities.lastAction=-Infinity;retryAt=0;missingSince=null;blockedTargets.clear();errorCount=0;}enabled=nextEnabled;}
+    if(event.data.type==='config'){settings=globalThis.DVSettings.normalize(event.data.settings);const nextMode=event.data.mode??'fishing';if(nextMode!==requestedMode&&(globalThis.DVActivities.names[nextMode]||nextMode==='random')){dailyWaiting=false;const returnMode=mode==='boss'?'fishing':mode;bossController.cancel();if(nextMode==='boss'){bossController.active=true;bossController.returnMode=returnMode;}deliveryBatchMode=null;requestedMode=nextMode;rotate=nextMode==='random';if(nextMode!=='random')mode=nextMode;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}const nextEnabled=event.data.enabled===true;if(nextEnabled!==enabled){clearNavigation();engine.reset();activities.lastAction=-Infinity;retryAt=0;missingSince=null;blockedTargets.clear();errorCount=0;}enabled=nextEnabled;}
   });
   window.addEventListener('offline',()=>{release();engine.reset();disconnectedAt=Date.now();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){release();clearNavigation();engine.reset();}});
@@ -249,6 +249,7 @@
     const world=getWorld(),level=world?.managers?.level?.currentLevel;
     if(!['navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
     switch(action.type){
+      case 'dailyLimit':{const data=signal(world.services.player.data),next=dailyRotation.choose(mode,data);world.services.ui.hideQuestSubmissionDialog();deliveryBatchMode=null;bossController.cancel();clearNavigation();engine.reset();if(next){mode=next;requestedMode=next;rotate=false;dailyWaiting=false;post('modeFallback',{mode,message:'當日上限，自動切換至'+globalThis.DVActivities.names[mode]});}else{dailyWaiting=true;release();post('retry',{message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'});}break;}
       case 'interact':if(mode!=='mining'||!miningInteraction(level))interact();break;
       case 'navigateVipFishing':{const vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);if(vip.boat)navigate(level,vip.boat);else retry('VIP 管理員暫時不可用，等待重新搜尋');break;}
       case 'travelFishing':transition(level,'travelFishing',()=>world.services.rpg.teleport('waypoint_fishing'));break;
@@ -280,7 +281,7 @@
       case 'offline':release();break;
       case 'wait':
         // Keep movement only while a navigation action is throttled by the scheduler.
-        if(s.loading||s.inputFocused||!s.visible||!s.ready||s.otherDialog||s.slider?.visible||s.submissionOpen||!enabled)release();
+        if(s.loading||s.inputFocused||!s.visible||!s.ready||s.otherDialog||s.slider?.visible||s.submissionOpen||!enabled||dailyWaiting)release();
         break;
     }
   }
@@ -289,14 +290,15 @@
       if(enabled&&Date.now()<retryAt){release();return;}
       if(enabled&&requestedMode==='random'&&!bossController.active&&getWorld()?.managers?.level?.currentLevel?.label==='map_hub'&&rotate){
         const data=signal(getWorld()?.services?.player?.data);
-        const choices=['fishing','mining','hunting'].filter(k=>data?.activities_data?.[k]?.has_played&&!inventoryState?.[k]?.is_full);
+        const choices=['fishing','mining','hunting'].filter(k=>!dailyRotation.exhausted.has(k)&&data?.activities_data?.[k]?.has_played&&!inventoryState?.[k]?.is_full);
         if(choices.length){const alternatives=choices.filter(k=>k!==mode);const pool=alternatives.length?alternatives:choices;mode=pool[Math.floor(Math.random()*pool.length)];rotate=false;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}
       }
       const currentLevel=getWorld()?.managers?.level?.currentLevel;
       const bossResultReady=currentLevel?.label!=='map_boss'||!!findResult(getWorld());
+      const dailyData=signal(getWorld()?.services?.player?.data);const hadDailyLimits=dailyRotation.exhausted.size;dailyRotation.observe(dailyData?.quest_submissions_today);if(hadDailyLimits&&!dailyRotation.exhausted.size)dailyWaiting=false;
       const playerLevel=signal(getWorld()?.services?.player?.data)?.overall_level?.level??0;
       if(enabled&&requestedMode==='boss'&&!bossController.active&&bossController.returnMode&&bossResultReady){requestedMode=bossController.returnMode;mode=requestedMode;post('modeFallback',{mode,message:'Boss 挑戰結束，返回任務模式'});clearNavigation();engine.reset();}
-      if(enabled&&requestedMode!=='boss'){
+      if(enabled&&!dailyWaiting&&requestedMode!=='boss'){
         if(bossController.active&&!settings.autoBoss)bossController.cancel();
         if(mode==='boss'&&!bossController.active&&bossResultReady){mode=bossController.returnMode??(requestedMode==='random'?'fishing':requestedMode);clearNavigation();engine.reset();}
         if(mode!=='boss'&&currentLevel?.label==='map_hub'&&!deliveryBatchMode&&bossController.enter(playerLevel,settings,mode)){mode='boss';clearNavigation();engine.reset();}
@@ -322,6 +324,7 @@
       else if(disconnectedAt){clearNavigation();engine.reset();disconnectedAt=null;recoveryRequested=false;}
       if(enabled&&s.online&&!document.hidden&&disconnectedAt&&Date.now()-disconnectedAt>30000&&!recoveryRequested){recoveryRequested=true;post('recover',{reason:'遊戲連線未恢復'});}
       const now=Date.now();
+      if(enabled&&dailyWaiting&&s.online&&s.connected!==false&&s.visible&&now-lastDailyRefresh>60000){lastDailyRefresh=now;getWorld()?.services?.player?.refreshAllUserData$?.subscribe({error:()=>{}});}
       if(enabled&&!s.ready&&s.visible&&s.online){unreadySince??=now;if(now-unreadySince>120000&&now-lastRecovery>60000){lastRecovery=now;post('recover',{reason:'等待遊戲狀態逾時'});}}else unreadySince=null;
       if(enabled&&mode==='fishing'&&s.ready&&s.visible&&s.online&&s.connected!==false&&s.atFishing&&!s.canPlay&&!s.slider?.visible&&!s.loading&&!s.otherDialog&&!s.submissionOpen&&!s.bagFull&&!s.masteryMax){
         fishingWaitSince??=now;
@@ -336,6 +339,8 @@
       if(enabled&&mode!=='fishing'&&s.fishingOpen)action=s.slider?.visible?gate:{type:'wait',message:'完成目前釣魚回合後再切換玩法'};
       if(enabled&&now<retryAt)action={type:'wait',message:retryMessage};
       if(enabled&&['mining','hunting','boss'].includes(mode)&&!(mode==='boss'&&(s.bossComplete||s.bossPhase==='fishing'||s.bossPending))&&s.ready&&s.visible&&s.online&&s.connected!==false&&!s.loading&&!s.otherDialog&&!s.inputFocused&&!s.resultOpen&&!s.slider?.visible){const player=currentLevel.managers.entity.player;const code=globalThis.DVNavigation.dodge(player,mode==='mining'?currentLevel.managers.mining?.mining?.dangers:globalThis.DVNavigation.combatDangers(currentLevel.managers.entity.entities),polygonList(currentLevel));if(code)action={type:'dodge',code,message:mode==='mining'?'避開落石警示與爆炸區':'避開戰鬥範圍攻擊與投射物'};}
+      if(dailyWaiting)action={type:'wait',message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'};
+      if(action.type==='dailyLimit'||dailyWaiting)release();
       execute(action,s);errorCount=0;
       if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
     }catch(error){release();clearNavigation();hookError=`遊戲狀態暫時不相容：${error.message}`;if(enabled&&Date.now()>=retryAt){errorCount++;retryAt=Date.now()+3000;retryMessage=hookError;post('retry',{message:hookError,diagnostics:{error:error.message,stack:error.stack}});if(errorCount>=3&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:hookError});}}}

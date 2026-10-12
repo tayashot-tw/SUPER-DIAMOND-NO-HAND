@@ -31,7 +31,7 @@ assert.equal(bot.decide(state({submissionOpen:true,canSubmit:true}),5000).type,'
 assert.equal(bot.decide(state({submissionOpen:true,canSubmit:true,submitting:true}),6800).type,'wait');
 assert.equal(bot.decide(state({submissionOpen:true,canSubmit:false}),7000).type,'closeSubmission');
 assert.equal(readyBot().decide(state({bagFull:true,questReady:false}),5000).type,'halt');
-assert.equal(readyBot().decide(state({submissionOpen:true,dailyLimit:true}),5000).type,'halt');
+assert.equal(readyBot().decide(state({submissionOpen:true,dailyLimit:true}),5000).type,'dailyLimit');
 assert.equal(readyBot().decide(state({inHub:true,fishingUnlocked:false}),5000).type,'halt');
 assert.equal(readyBot().decide(state({visible:false}),5000).type,'wait');
 const wall=[{x:36,y:-12},{x:60,y:-12},{x:60,y:60},{x:36,y:60}];
