@@ -84,3 +84,7 @@ python build.py
 ## 讓 ChatGPT 接手開發
 
 閱讀 [DEVELOPMENT.md](DEVELOPMENT.md)，把接手提示、相關程式碼、版本與錯誤貼給下一位 ChatGPT。該文件整理已做修正、實測證據、待驗證功能及打包方式。
+
+## 支持開發／贊助
+
+若本專案對你有幫助，可透過 [PayPal 支持 tayashot](https://paypal.me/tayashot)。贊助完全自願，不影響使用功能，也不保證遊戲獎勵、帳號安全或後續維護。
