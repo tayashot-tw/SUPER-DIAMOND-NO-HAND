@@ -2,7 +2,7 @@
   'use strict';
   const VERSION='game-6NMIDNT2.js';
   const engine=new globalThis.DVAutoplay.Autoplayer();
-  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let dailyWaiting=false,lastDailyRefresh=0;
+  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let dailyWaiting=false,lastDailyRefresh=0,vipBoardingLevel=null;
   const activities=new globalThis.DVActivities.ActivityPlanner();let mode='fishing',requestedMode='fishing',rotate=false,modeStarted=0,lastItemCount=null,deliveryBatchMode=null;
   let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null;
   let disconnectedAt=null,recoveryRequested=false,lastPulse=0,pendingTransition=null;
@@ -203,7 +203,7 @@
       diamonds:subject(services?.auth?.userData$)?.data?.total_diamonds,itemCount,bagFull:!!fishingData?.is_full,
       questSubmissions:data?.quest_submissions_today,questReady:globalThis.DVActivities.stockPolicy(mode,fishingData?.items,quest,settings.deliveryMultiplier).ready,
       fishingUnlocked:!!data?.activities_data?.fishing?.has_played,
-      vipWanted:mode==='fishing'&&vip.eligible&&!vip.inside, vipBoatAvailable:!!vip.boat, atVipBoat:!!vip.boat&&hasContact(player,vip.boat),
+      vipWanted:mode==='fishing'&&vip.eligible&&!vip.inside, vipDialogue:vipBoardingLevel===level&&!!world?.uiManager?.cutsceneUi?.state, vip:{eligible:vip.eligible,hasPass:vip.hasPass,inside:vip.inside,boat:vip.boat?.name??vip.boat?.label??null}, vipBoatAvailable:!!vip.boat, atVipBoat:!!vip.boat&&hasContact(player,vip.boat),
       masteryMax:!!(data&&fishingManager?.maxMasteryLevel?.(data)),
       inHub:level?.label==='map_hub',inFishing:!!fishingManager,
       atFishing:!!player?.collidedObj&&isFishingArea(player.collidedObj),
@@ -250,7 +250,7 @@
     if(!['navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
     switch(action.type){
       case 'dailyLimit':{const data=signal(world.services.player.data),next=dailyRotation.choose(mode,data);world.services.ui.hideQuestSubmissionDialog();deliveryBatchMode=null;bossController.cancel();clearNavigation();engine.reset();if(next){mode=next;requestedMode=next;rotate=false;dailyWaiting=false;post('modeFallback',{mode,message:'當日上限，自動切換至'+globalThis.DVActivities.names[mode]});}else{dailyWaiting=true;release();post('retry',{message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'});}break;}
-      case 'interact':if(mode!=='mining'||!miningInteraction(level))interact();break;
+      case 'interact':if(mode==='fishing'&&s.atVipBoat)vipBoardingLevel=level;if(mode!=='mining'||!miningInteraction(level))interact();break;
       case 'navigateVipFishing':{const vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);if(vip.boat)navigate(level,vip.boat);else retry('VIP 管理員暫時不可用，等待重新搜尋');break;}
       case 'travelFishing':transition(level,'travelFishing',()=>world.services.rpg.teleport('waypoint_fishing'));break;
       case 'travelActivity':transition(level,'travelActivity',()=>world.services.rpg.teleport(`waypoint_${mode}`));break;
@@ -342,7 +342,7 @@
       if(dailyWaiting)action={type:'wait',message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'};
       if(action.type==='dailyLimit'||dailyWaiting)release();
       execute(action,s);errorCount=0;
-      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
+      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,vip:s.vip,health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
     }catch(error){release();clearNavigation();hookError=`遊戲狀態暫時不相容：${error.message}`;if(enabled&&Date.now()>=retryAt){errorCount++;retryAt=Date.now()+3000;retryMessage=hookError;post('retry',{message:hookError,diagnostics:{error:error.message,stack:error.stack}});if(errorCount>=3&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:hookError});}}}
 
   },30);

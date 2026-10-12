@@ -59,7 +59,8 @@ const vipLevel={managers:{entity:{player,entities:[boat]}}};
 const svc={player:{bpFishingPass:()=>true},tiledState:{getAll:()=>[]}};
 assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:49}}).boat,null);
 assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:50}}).boat,boat);
-assert.equal(vipFishing(vipLevel,{...svc,player:{bpFishingPass:()=>false}},{overall_level:{level:50}}).eligible,false);
+assert.equal(vipFishing(vipLevel,{...svc,player:{bpFishingPass:()=>false}},{overall_level:{level:50}}).hasPass,false);
+assert.equal(vipFishing(vipLevel,{...svc,player:{bpFishingPass:()=>false}},{overall_level:{level:50}}).boat,boat,'visit native NPC before pass synchronizes; native gate remains');
 svc.tiledState.getAll=()=>['in_hvu_fishing_area'];
 assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:50}}).inside,true);
 require('./planner.js');
@@ -95,3 +96,5 @@ bossPortal.getNextLevel=undefined;bossPortal.properties={get:()=>[{name:'telepor
 assert.equal(target(bh,'boss'),bossPortal,'native destination includes json extension');
 bossPortal.isLocked=()=>true;assert.equal(target(bh,'boss'),undefined,'locked portal excluded');
 console.log('PASS: native Boss portal, json suffix and locked entry');
+
+const vp=new globalThis.DVAutoplay.Autoplayer();vp.connectedAt=0;assert.equal(vp.decide({...fs,vipDialogue:true,atVipBoat:false,storyOpen:true,storyCanContinue:true,otherDialog:true},10000).type,'advanceStory');

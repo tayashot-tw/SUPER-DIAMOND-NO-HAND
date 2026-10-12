@@ -37,10 +37,11 @@
   }
   function vipFishing(level,services,data,usable=()=>true){
     const entities=level?.managers?.entity?.entities??[],player=level?.managers?.entity?.player;
-    const eligible=Number(data?.overall_level?.level)>=50&&services?.player?.bpFishingPass?.()===true;
+    const eligible=Number(data?.overall_level?.level)>=50;
+    const hasPass=services?.player?.bpFishingPass?.()===true||data?.bp_fishing_pass===true;
     const inside=services?.tiledState?.getAll?.()?.includes('in_hvu_fishing_area')===true;
-    const boat=eligible&&player?.body?near(center(player),entities.filter(e=>active(e)&&usable(e)&&e.label==='npc_hvu_boat')):null;
-    return {eligible,inside,boat};
+    const boat=eligible&&player?.body?near(center(player),entities.filter(e=>active(e)&&usable(e)&&(e.label==='npc_hvu_boat'||e.name==='npc_hvu_boat'||String(e.name??'').startsWith('npc_hvu_boat_')))):null;
+    return {eligible,hasPass,inside,boat};
   }
   function stockPolicy(mode,items,quest,multiplier=4){
     const suffix={fishing:'FISH',mining:'GEM',hunting:'HERB'}[mode];

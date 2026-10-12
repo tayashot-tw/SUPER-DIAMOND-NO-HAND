@@ -123,7 +123,7 @@
         if(!s.canSubmit&&now-this.lastAction>=1800){this.lastAction=now;return {type:'closeSubmission',message:'交貨完成，返回釣魚'};}
         return {type:'wait',message:'等待交貨介面更新'};
       }
-      if(s.vipWanted&&s.atVipBoat&&s.storyOpen){
+      if(s.vipWanted&&(s.atVipBoat||s.vipDialogue)&&s.storyOpen){
         if(s.storyCanContinue&&now-this.lastAction>=700){this.lastAction=now;return {type:'advanceStory',message:'繼續登船對話'};}
         return {type:'wait',message:'等待 VIP 登船對話'};
       }
