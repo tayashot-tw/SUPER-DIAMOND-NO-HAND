@@ -39,8 +39,13 @@
     const entities=level?.managers?.entity?.entities??[],player=level?.managers?.entity?.player;
     const eligible=Number(data?.overall_level?.level)>=50;
     const hasPass=services?.player?.bpFishingPass?.()===true||data?.bp_fishing_pass===true;
-    const inside=services?.tiledState?.getAll?.()?.includes('in_hvu_fishing_area')===true;
-    const boat=eligible&&player?.body?near(center(player),entities.filter(e=>active(e)&&usable(e)&&(e.label==='npc_hvu_boat'||e.name==='npc_hvu_boat'||String(e.name??'').startsWith('npc_hvu_boat_')))):null;
+    const stateInside=services?.tiledState?.getAll?.()?.includes('in_hvu_fishing_area')===true;
+    const vipZones=entities.filter(e=>e?.body&&(e.properties?.get?.()??[]).some(p=>p.name==='minigame'&&p.value==='fishing')&&(String(e.label??e.name??'').includes('hvu')||(e.properties?.get?.()??[]).some(p=>p.name==='is_hvu_only'&&p.value===true)));
+    const p=center(player),bodies=vipZones.map(e=>e.body);
+    // Fast travel can retain the native VIP flag after leaving the ship.
+    const onShip=!bodies.length||!!p&&p.x>=Math.min(...bodies.map(b=>b.x))-32&&p.x<=Math.max(...bodies.map(b=>b.x+b.width))+32&&p.y>=Math.min(...bodies.map(b=>b.y))-64&&p.y<=Math.max(...bodies.map(b=>b.y+b.height))+64;
+    const inside=stateInside&&onShip;
+    const boat=eligible&&player?.body?near(center(player),entities.filter(e=>e&&!e.destroyed&&e.enabled!==false&&!e.isLocked?.()&&usable(e)&&(String(e.label??'').startsWith('npc_hvu_boat')||e.name==='npc_hvu_boat'||String(e.name??'').startsWith('npc_hvu_boat_')))):null;
     return {eligible,hasPass,inside,boat};
   }
   function stockPolicy(mode,items,quest,multiplier=4){

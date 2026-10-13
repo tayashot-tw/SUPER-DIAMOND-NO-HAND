@@ -1,10 +1,10 @@
 (() => {
   'use strict';
-  const VERSION='game-6NMIDNT2.js';
+  const GAME_MODULES=['game-KRZLVEFN.js','game-74YGLLZX.js','game-6NMIDNT2.js'];const hookedPrototypes=new WeakSet();
   const engine=new globalThis.DVAutoplay.Autoplayer();
   let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let dailyWaiting=false,lastDailyRefresh=0,vipBoardingLevel=null;
   const activities=new globalThis.DVActivities.ActivityPlanner();let mode='fishing',requestedMode='fishing',rotate=false,modeStarted=0,lastItemCount=null,deliveryBatchMode=null;
-  let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null;
+  let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null,routeFine=false;
   let disconnectedAt=null,recoveryRequested=false,lastPulse=0,pendingTransition=null;
   const auditEvents=[],auditedManagers=new WeakSet(),auditedPlayers=new WeakSet();
   const audit=(event,detail)=>{auditEvents.push({event,detail,at:Date.now()});if(auditEvents.length>24)auditEvents.shift();};
@@ -18,7 +18,7 @@
   let retryAt=0,retryMessage='',errorCount=0,lastRecovery=0,missingSince=null,unreadySince=null,fishingWaitSince=null;const blockedTargets=new Map();
   const targetKey=e=>e?.uid??e?.id??e?.name;
   const available=e=>e?.body&&!e.destroyed&&e.enabled!==false&&(blockedTargets.get(targetKey(e))??0)<=Date.now();
-  function retry(message,target=null){if(target)blockedTargets.set(targetKey(target),Date.now()+30000);clearNavigation();retryAt=Date.now()+1500;retryMessage=message;post('retry',{message,diagnostics:{mode,target:target?{name:target.name,id:target.id}:null}});}
+  function retry(message,target=null){if(target)blockedTargets.set(targetKey(target),Date.now()+30000);clearNavigation();retryAt=Date.now()+1500;retryMessage=message;post('retry',{message,diagnostics:{mode,message,navigation:target&&String(target.label??target.name??'').startsWith('npc_')?{start:feet(getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player),polygons:polygonList(getWorld()?.managers?.level?.currentLevel)}:null,target:target?{name:target.name,id:target.id,polygon:interactionPolygon(target),goals:navigationGoals(target,getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player)}:null}});}
   function fishingAreas(level){const player=level?.managers?.entity?.player,p=player?.body?feet(player):null;if(!p)return [];return (level.managers.entity.entities??[]).filter(e=>available(e)&&isFishingArea(e)&&e.canInteract&&!e.isLocked?.()).sort((a,b)=>Math.hypot(center(a).x-p.x,center(a).y-p.y)-Math.hypot(center(b).x-p.x,center(b).y-p.y));}
   const channel='diamond-valley-autoplay-v2';
   const post=(type,data={})=>window.postMessage({channel,source:'bot',type,...data},location.origin);
@@ -50,9 +50,9 @@
     const event={button:0,stopPropagation(){},preventDefault(){}};
     view.emit('pointertap',event);view.emit('pointerup',event);return true;
   }
-  function clearNavigation(){path=null;pathTarget='';pathMap=null;routeAxis=null;routeWaypoint=null;routeSearch=null;lastPosition=null;stuckSince=null;release();}
+  function clearNavigation(){path=null;pathTarget='';pathMap=null;routeAxis=null;routeWaypoint=null;routeSearch=null;routeFine=false;lastPosition=null;stuckSince=null;release();}
   function transition(level,action,callback){
-    if(pendingTransition?.level===level&&pendingTransition.label===level?.label&&Date.now()-pendingTransition.started<10000)return false;
+    if(pendingTransition&&pendingTransition.level===level&&pendingTransition.label===level?.label&&Date.now()-pendingTransition.started<10000)return false;
     clearNavigation();pendingTransition={level,label:level?.label,action,started:Date.now()};
     try{callback();return true;}catch(error){pendingTransition=null;throw error;}
   }
@@ -84,7 +84,14 @@
   function polygonList(level){
     const cached=polygonCache.get(level);if(cached?.source===level.collisionMap&&cached?.size===(level.collisionMap??[]).length)return cached.polygons;
     const polygons= (level.collisionMap??[]).map(item=>{
-      const shape=typeof item.body?.toPolygon==='function'?item.body.toPolygon():item.body;
+      const body=item.body;
+      const patterns={full:[[-.5,-.5],[.5,-.5],[.5,.5],[-.5,.5]],'full-diagonal':[[-.5,-.5],[.5,.5],[-.5,.5]],half:[[-.5,0],[.5,0],[.5,.5],[-.5,.5]],'bottom-half-diagonal':[[-.5,0],[.5,.5],[-.5,.5]],'bottom-half-diagonal-reversed':[[.5,0],[-.5,.5],[.5,.5]],'diagonal-bottom-half':[[-.5,-.5],[.5,0],[.5,.5],[-.5,.5]],'diagonal-bottom-half-reversed':[[-.5,0],[.5,-.5],[.5,.5],[-.5,.5]]};
+      if(typeof body?.toPolygon==='function'&&patterns[item.type]){
+        const directions=['north','north-east','east','south-east','south','south-west','west','north-west'];
+        const angle=Math.max(0,directions.indexOf(item.rotation))*Math.PI/4,c=Math.cos(angle),s=Math.sin(angle);
+        return patterns[item.type].map(([x,y])=>{x*=body.w;y*=body.h;return {x:body.pos.x+body.w/2+x*c-y*s,y:body.pos.y+body.h/2+x*s+y*c};});
+      }
+      const shape=typeof body?.toPolygon==='function'?body.toPolygon():body;
       return (shape?.calcPoints??shape?.points??[]).map(p=>({x:p.x+(shape.pos?.x??0),y:p.y+(shape.pos?.y??0)}));
     }).filter(points=>points.length>=3);
     polygonCache.set(level,{source:level.collisionMap,size:(level.collisionMap??[]).length,polygons});return polygons;
@@ -97,6 +104,11 @@
   function hasContact(player,target){
     if(!target)return false;if(player?.collidedObj===target)return true;
     return ['arriving','staying'].some(k=>[...(player?.collidedEntities?.[k]?.values?.()??[])].includes(target));
+  }
+  function fishingInteraction(level){
+    const player=level?.managers?.entity?.player,target=fishingAreas(level).find(e=>hasContact(player,e));
+    if(!target||typeof target.handleGeneralInteractionProperties!=='function'||player.lockedCamera||player.isInteracting||player.isCutscene)return false;
+    release();if(Date.now()-lastPulse<650)return true;lastPulse=Date.now();target.handleGeneralInteractionProperties();return true;
   }
   function miningInteraction(level){
     const player=level?.managers?.entity?.player,target=globalThis.DVActivities.target(level,'mining',available,pathMap===level?pathTarget:null);
@@ -128,7 +140,10 @@
     const unique=new Map();
     for(const point of candidates){const goal={x:Math.max(minX,Math.min(maxX,point.x)),y:Math.max(minY,Math.min(maxY,point.y))};unique.set(`${goal.x},${goal.y}`,goal);}
     const polygon=interactionPolygon(entity);
-    return [...unique.values()].filter(goal=>!polygon||[-9,9].every(dx=>[-9,9].every(dy=>globalThis.DVAutoplay.polygonIntersectsRect(polygon,{x:goal.x+dx-p.halfX,y:goal.y+dy-p.offset-p.halfY,width:p.halfX*2,height:p.offset+p.halfY*2}))));
+    const goals=[...unique.values()],filtered=goals.filter(goal=>!polygon||[-9,9].every(dx=>[-9,9].every(dy=>globalThis.DVAutoplay.polygonIntersectsRect(polygon,{x:goal.x+dx-p.halfX,y:goal.y+dy-p.offset-p.halfY,width:p.halfX*2,height:p.offset+p.halfY*2}))));
+    // NPC interaction shapes may be smaller than the waypoint tolerance.
+    // Keep body-based approach points; collision routing and native contact still gate interaction.
+    return filtered.length||!String(entity.label??entity.name??'').startsWith('npc_')?filtered:goals;
   }
   function navigationGoal(entity,player,polygons){
     const p=feet(player);
@@ -153,10 +168,11 @@
     const targetId=target.uid??target.id??target.name;
     if(!path||pathTarget!==targetId||pathMap!==level){
       if(!routeSearch||pathTarget!==targetId||pathMap!==level){
-        release();routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX+4,y:p.halfY+4});pathTarget=targetId;pathMap=level;routeAxis=null;routeWaypoint=null;
+        release();routeFine=false;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX+4,y:p.halfY+4});pathTarget=targetId;pathMap=level;routeAxis=null;routeWaypoint=null;
       }
       const result=routeSearch.step(200,4);
       if(!result.done){release();return;}
+      if(!result.path&&!routeFine&&String(target.label??target.name??'').startsWith('npc_')){routeFine=true;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX,y:p.halfY},6,48000);release();return;}
       routeSearch=null;lastPosition=p;stuckSince=null;path=result.path?globalThis.DVNavigation.simplify(result.path):null;
       if(!path){retry(`暫時無法到達 ${target.name??'目標'}，嘗試其他目標`,target);return;}
 
@@ -186,7 +202,7 @@
       enabled,online:navigator.onLine,connected,visible:!document.hidden,
       ready:!!(game?.started&&level&&player&&services&&data&&inventory),hookError,
       inputFocused:!!(document.activeElement?.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName??'')),
-      loading:!!((pendingTransition?.level===level&&pendingTransition.label===level?.label&&Date.now()-pendingTransition.started<10000)||level?.preventUpdates||subject(services?.gameState?.inGameLoading$)||player?.isChangingLevel),
+      loading:!!((pendingTransition&&pendingTransition.level===level&&pendingTransition.label===level?.label&&Date.now()-pendingTransition.started<10000)||level?.preventUpdates||subject(services?.gameState?.inGameLoading$)||player?.isChangingLevel),
       mode,map:level?.label,level:data?.overall_level?.level,experience:data?.overall_level?.experience,
       activityUnlocked:!!data?.activities_data?.[mode]?.has_played,inActivity:!!level?.managers?.[mode],
       inBattle:!!player?.inBattle,treasuryActive:!!services?.treasury?.isActiveValue,
@@ -200,15 +216,15 @@
       bossComplete:mode==='boss'&&!!fishingManager?.hasComplete,
       bossPhase:mode==='boss'?fishingManager?.boss?.currentActivity:null,
       bossPending:mode==='boss'&&Number(signal(fishingManager?.pendingUpdates)??0)>0,
-      diamonds:subject(services?.auth?.userData$)?.data?.total_diamonds,itemCount,bagFull:!!fishingData?.is_full,
+      diamonds:diamondBalance??subject(services?.auth?.userData$)?.data?.total_diamonds,itemCount,bagFull:!!fishingData?.is_full,
       questSubmissions:data?.quest_submissions_today,questReady:globalThis.DVActivities.stockPolicy(mode,fishingData?.items,quest,settings.deliveryMultiplier).ready,
       fishingUnlocked:!!data?.activities_data?.fishing?.has_played,
       vipWanted:mode==='fishing'&&vip.eligible&&!vip.inside, vipDialogue:vipBoardingLevel===level&&!!world?.uiManager?.cutsceneUi?.state, vip:{eligible:vip.eligible,hasPass:vip.hasPass,inside:vip.inside,boat:vip.boat?.name??vip.boat?.label??null}, vipBoatAvailable:!!vip.boat, atVipBoat:!!vip.boat&&hasContact(player,vip.boat),
       masteryMax:!!(data&&fishingManager?.maxMasteryLevel?.(data)),
       inHub:level?.label==='map_hub',inFishing:!!fishingManager,
-      atFishing:!!player?.collidedObj&&isFishingArea(player.collidedObj),
+      atFishing:fishingAreas(level).some(e=>hasContact(player,e)),
       atDelivery:!!player?.collidedObj&&player.collidedObj===deliveryTarget(level)?.entity,
-      canPlay:!!fishingManager?.canPlayMinigame?.(),
+      canPlay:!!fishingManager?.canPlayMinigame?.()&&(mode!=='fishing'||!subject(fishingManager?.fishing?.isOpen$)),
       submissionOpen:!!subject(dialog?.isOpen$)||!!subject(services?.ui?.isQuestSubmissionDialogVisible$),
       canSubmit:!!dialog&&!subject(dialog.submitDisabled$)&&!!dialog.submitButton?.view&&dialog.submitButton.button?.enabled!==false,
       submitting:!!dialog?.submissionInProgress,
@@ -217,22 +233,27 @@
       slider:slider?{visible:!!slider.visible&&(mode==='boss'||!!level?.managers?.fishing?.fishing?.isOpen$?.value),done:slider.isInteracted,cooldown:slider.cooldownTimer,indicator:slider.indicator.x,left:slider.successZone.x,width:slider.successZone.width,clicks:slider.totalClicks}:null
     };
   }
-  let questState=null,inventoryState=null,subscriptions=[];
+  let questState=null,inventoryState=null,diamondBalance=null,subscriptions=[];
   function connectGame(instance){
     subscriptions.forEach(s=>s.unsubscribe());subscriptions=[];
-    game=instance;questState=null;inventoryState=null;engine.reset();clearNavigation();hookError='';
+    game=instance;questState=null;inventoryState=null;diamondBalance=null;engine.reset();clearNavigation();hookError='';
     const observe=(source,callback)=>{if(source?.subscribe)subscriptions.push(source.subscribe(callback));};
     observe(instance.services?.inventory?.items$,value=>{inventoryState=value;audit('inventory',Object.fromEntries(['fishing','mining','hunting'].map(k=>[k,(value?.[k]?.items??[]).reduce((sum,item)=>sum+item.quantity,0)])));});
     observe(instance.services?.quest?.activityQuests$,value=>{questState=value;});
+    observe(instance.services?.gameState?.totalDiamonds$,value=>{if(typeof value==='number'&&Number.isFinite(value))diamondBalance=Math.max(0,value);});
   }
   async function hook(){
-    try{
+    const results=await Promise.allSettled(GAME_MODULES.map(async VERSION=>{
       const module=await import(new URL(`../${VERSION}`,location.href).href);
-      if(typeof module.Game?.prototype?.init!=='function')throw new Error('遊戲模組結構不同');
-      const original=module.Game.prototype.init;
-      module.Game.prototype.init=function(...args){connectGame(this);return original.apply(this,args);};
-      post('hook',{message:'已連接遊戲初始化；等待遊戲啟動'});
-    }catch(error){hookError=`無法連接遊戲模組：${error.message}`;post('hook',{message:hookError});}
+      const prototype=module.Game?.prototype;
+      if(typeof prototype?.init!=='function')throw new Error('遊戲模組結構不同：'+VERSION);
+      if(hookedPrototypes.has(prototype))return;
+      hookedPrototypes.add(prototype);
+      const original=prototype.init;
+      prototype.init=function(...args){connectGame(this);return original.apply(this,args);};
+      post('hook',{message:'已連接遊戲模組 '+VERSION+'；等待遊戲啟動'});
+    }));
+    if(results.every(r=>r.status==='rejected')){hookError='無法連接目前遊戲模組';post('hook',{message:hookError});}
   }
   // The site dynamically imports this same Game module. Hook before its init;
   // the original game initialization, server validation and callbacks are preserved.
@@ -250,7 +271,7 @@
     if(!['navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
     switch(action.type){
       case 'dailyLimit':{const data=signal(world.services.player.data),next=dailyRotation.choose(mode,data);world.services.ui.hideQuestSubmissionDialog();deliveryBatchMode=null;bossController.cancel();clearNavigation();engine.reset();if(next){mode=next;requestedMode=next;rotate=false;dailyWaiting=false;post('modeFallback',{mode,message:'當日上限，自動切換至'+globalThis.DVActivities.names[mode]});}else{dailyWaiting=true;release();post('retry',{message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'});}break;}
-      case 'interact':if(mode==='fishing'&&s.atVipBoat)vipBoardingLevel=level;if(mode!=='mining'||!miningInteraction(level))interact();break;
+      case 'interact':if(mode!=='boss'&&s.slider?.visible&&s.fishingOpen){release();level.managers.fishing?.handleInteraction?.();break;}if(mode==='fishing'&&s.atVipBoat)vipBoardingLevel=level;if(mode==='fishing'&&s.atFishing&&fishingInteraction(level))break;if(mode!=='mining'||!miningInteraction(level))interact();break;
       case 'navigateVipFishing':{const vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);if(vip.boat)navigate(level,vip.boat);else retry('VIP 管理員暫時不可用，等待重新搜尋');break;}
       case 'travelFishing':transition(level,'travelFishing',()=>world.services.rpg.teleport('waypoint_fishing'));break;
       case 'travelActivity':transition(level,'travelActivity',()=>world.services.rpg.teleport(`waypoint_${mode}`));break;
@@ -281,7 +302,7 @@
       case 'offline':release();break;
       case 'wait':
         // Keep movement only while a navigation action is throttled by the scheduler.
-        if(s.loading||s.inputFocused||!s.visible||!s.ready||s.otherDialog||s.slider?.visible||s.submissionOpen||!enabled||dailyWaiting)release();
+        if(s.atFishing||s.loading||s.inputFocused||!s.visible||!s.ready||s.otherDialog||s.slider?.visible||s.submissionOpen||!enabled||dailyWaiting)release();
         break;
     }
   }
@@ -342,7 +363,7 @@
       if(dailyWaiting)action={type:'wait',message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'};
       if(action.type==='dailyLimit'||dailyWaiting)release();
       execute(action,s);errorCount=0;
-      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,vip:s.vip,health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
+      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,vip:s.vip,boatCandidates:(level?.managers?.entity?.entities??[]).filter(e=>/boat|hvu/i.test(String(e.name??'')+' '+String(e.label??''))).map(e=>({name:e.name,label:e.label,enabled:e.enabled,destroyed:e.destroyed,canInteract:e.canInteract,locked:e.isLocked?.(),body:e.body,properties:e.properties?.get?.()})),health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
     }catch(error){release();clearNavigation();hookError=`遊戲狀態暫時不相容：${error.message}`;if(enabled&&Date.now()>=retryAt){errorCount++;retryAt=Date.now()+3000;retryMessage=hookError;post('retry',{message:hookError,diagnostics:{error:error.message,stack:error.stack}});if(errorCount>=3&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:hookError});}}}
 
   },30);

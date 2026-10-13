@@ -95,3 +95,5 @@ assert.equal(dodge(cornerPlayer,[cornerThreat],cornerWalls),'ArrowUp','take the 
 cornerPlayer.body.y=-16;
 assert.equal(dodge(cornerPlayer,[cornerThreat],cornerWalls),'ArrowRight','retain the escape plan and turn around the wall instead of reversing');
 console.log('PASS: wall-corner escape and retained turning route');
+
+assert.equal(globalThis.DVNavigation.shouldReturnFishing('random','fishing',true,{...readyRotation,fishingOpen:true,slider:{visible:false}}),false,'hidden slider must not permit exiting an unfinished native fishing round');

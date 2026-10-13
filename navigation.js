@@ -40,7 +40,7 @@
     return {axis,code:axis==='x'?(dx>0?'ArrowRight':'ArrowLeft'):(dy>0?'ArrowDown':'ArrowUp')};
   }
   function shouldReturnFishing(requestedMode,mode,rotate,s){
-    return requestedMode==='random'&&mode==='fishing'&&rotate&&s.inFishing&&!s.inHub&&!s.slider?.visible&&!s.loading&&!s.otherDialog&&s.visible&&s.online&&s.connected!==false&&!s.questReady;
+    return requestedMode==='random'&&mode==='fishing'&&rotate&&s.inFishing&&!s.inHub&&!s.fishingOpen&&!s.slider?.visible&&!s.loading&&!s.otherDialog&&s.visible&&s.online&&s.connected!==false&&!s.questReady;
   }
   function combatDirection(player,target,tolerance=12){
     if(!player?.body||!target?.body)return null;

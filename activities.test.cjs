@@ -98,3 +98,9 @@ bossPortal.isLocked=()=>true;assert.equal(target(bh,'boss'),undefined,'locked po
 console.log('PASS: native Boss portal, json suffix and locked entry');
 
 const vp=new globalThis.DVAutoplay.Autoplayer();vp.connectedAt=0;assert.equal(vp.decide({...fs,vipDialogue:true,atVipBoat:false,storyOpen:true,storyCanContinue:true,otherDialog:true},10000).type,'advanceStory');
+
+boat.canInteract=false;assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:62}}).boat,boat,'NPC remains a navigation target before entering its interaction radius');
+
+boat.label='npc_hvu_boat_1';assert.equal(vipFishing(vipLevel,svc,{overall_level:{level:62}}).boat,boat);
+
+const shipZone={label:'hvu_boat_1',body:{x:1472,y:1460,width:448,height:844},properties:{get:()=>[{name:'minigame',value:'fishing'}]}};const staleVipLevel={managers:{entity:{player:{body:{x:1022,y:1220,width:32,height:64}},entities:[boat,shipZone]}}};assert.equal(vipFishing(staleVipLevel,{tiledState:{getAll:()=>['in_hvu_fishing_area']}},{overall_level:{level:72}}).inside,false,'fast travel retaining VIP flag must require boarding again');staleVipLevel.managers.entity.player.body.x=1488;staleVipLevel.managers.entity.player.body.y=1920;assert.equal(vipFishing(staleVipLevel,{tiledState:{getAll:()=>['in_hvu_fishing_area']}},{overall_level:{level:72}}).inside,true);

@@ -1,3 +1,58 @@
+## 0.4.22
+
+- 每 6 小時檢查 GitHub 版本，提供立即檢查與新版 ZIP 下載提示。
+- 手動覆蓋原資料夾、重新載入；不下載或執行遠端程式碼。
+- 已通過版本比較、快取、離線與設定保留測試；尚待瀏覽器重新載入實測。
+
+## 0.4.21
+
+- 釣魚原生回合尚未結束時，延後隨機模式返回城鎮。滿背包重新進場仍待驗證。
+
+## 0.4.20
+
+- Finish a pending fishing slider even after the requested mode changes. Live random hunting → mining → fishing cycle verified; hunting inventory +15 and mining inventory +32.
+
+## 0.4.19
+
+- Operate the fishing slider through its native controller to prevent an overlapping exit portal from receiving the generic interaction key. Multiple successful rounds verified with unchanged player position.
+
+## 0.4.17
+
+- Reboard VIP ship after quest delivery when fast travel retains the native VIP state outside the ship. Live diamond balance and delivery verified on 0.4.16.
+
+## 0.4.16
+
+- VIP continuous catches verified on 0.4.15. Display live spendable diamond balance from the official HUD stream.
+
+## 0.4.15
+
+- Start fishing through native general interaction properties; base entity handleInteraction is empty. VIP catches await live verification.
+
+## 0.4.14
+
+- VIP boarding verified in 0.4.13. Fix overlapping exit portal masking the fishing contact; select native contacted fishing target. Live catches pending.
+
+## 0.4.13
+
+- Reconstruct half and diagonal collision tiles with native rotation instead of treating every tile as a full square. VIP live verification pending.
+
+## 0.4.12
+
+- Retain VIP route collision geometry for offline reproduction; VIP boarding remains unverified.
+
+## 0.4.8
+
+- VIP boat NPC navigation no longer requires canInteract before approaching. Native access checks remain in force. Live boarding verification pending.
+
+# 0.4.7
+
+- 連接目前觀察到的官方新遊戲模組，修正畫面已載入但面板一直等待狀態。
+- 共用 Game 類別只連接一次，不重複包裝。
+
+# 0.4.6
+
+- 修正遊戲初始化、地圖尚未載入時等待傳送判斷的空值錯誤。
+
 # 0.4.5
 
 - 50 等先找船隻管理員，不再因船票同步阻止尋路。

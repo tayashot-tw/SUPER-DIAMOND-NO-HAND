@@ -129,3 +129,46 @@ Planner dailyLimit action replaces halt only on official quest dialog dailySubmi
 
 ## v0.4.5 VIP fix
 Live overall61 normal coastline, no boarding. Approach eligibility now level>=50 independent of bpFishingPass; native NPC still performs pass check. Keep hasPass in diagnostics, never mutate entitlement. vipBoardingLevel latches native boat interaction so ongoing story can continue if contacts lost. Boat label/exact-name/prefix identity supported. Need next live vip diagnostics to distinguish missing NPC / pass false / inside-state issue. Prior v0.4.1 docs eligibility AND pass superseded.
+
+## v0.4.6 cold map fix
+Live0.4.5 snapshot loading line189: pendingTransition?.level===level becomes undefined===undefined before world exists, then dereferences pendingTransition.label. Require pendingTransition truthy before comparing. VIP live verification still pending.
+
+## v0.4.7 official module update
+Live canvas overall61 but no connected game after reload0.4.6. Observed official resource inventory game-KRZLVEFN.js and game-74YGLLZX.js alongside old6NMIDNT2 (extension import). Hook supported Game.prototype.init in all three modules, WeakSet prototypes prevents double wrapping shared exports. Promise.allSettled isolates unavailable modules. These are observed current versions, no claim automatic future compatibility. Tests mainIntegration mock shared Game across modules. Pending v0.4.6 GitHub upload processing not yet confirmed; avoid concurrent publish that could overwrite newer version later. VIP verification pending reload0.4.7.
+
+0.4.7 live connected: level 62, VIP pass true, inside false, boat null. 0.4.8 removes canInteract prerequisite for boat navigation; pending live validation. GitHub 0.4.6 upload remains unconfirmed.
+
+0.4.8 live boat still null. 0.4.9 adds label suffix support and boatCandidates diagnostics (names, labels, flags, body, properties). Await reload to identify runtime NPC. Do not claim VIP boarding success.
+
+0.4.9 live: NPC npc_hvu_boat id8868 exists enabled/canInteract/unlocked, body x1360 y1834 w50 h86; native add_state=in_hvu_fishing_area teleport8756. Boat null was transient blockedTargets after route failure; restart reveals target. 0.4.10 adds body-based NPC goals if strict polygon tolerance removes all, and persists retry message/polygon/goals. Still no boarding proof.
+
+0.4.10 live VIP NPC route fails with nonempty goals and polygon null. 0.4.11 fallback for NPC only: 6px grid, exact native feet half16/6 instead of inflated20/10, max48000 nodes, incremental 4ms budget. No teleport bypass. Pending live.
+
+0.4.11 live still fails VIP route, no verified boarding. 0.4.12 captures full collision polygons/start/goals in data-vip-route-diagnostics DOM attribute retained separately from later fishing retries. After user reload, read attr with CUA and write local JSON without printing entire geometry; reproduce createPathSearch offline to identify obstruction. Do not guess more route changes without geometry evidence.
+
+0.4.12 geometry captured work/vip-route-live.json: 754 polygons; every VIP goal blocked, expanded=0 at cells12/6/3, so this is geometry not A* search budget. Official game yf uses Sv[type](rotation) and Av scales normalized points then rotates around tile center. Old polygonList treated all SAT.Box as full. 0.4.13 mirrors official seven collision types plus eight compass rotations. Half/rotated/triangle regression tests added. Await live VIP check.
+
+0.4.13 LIVE VIP BOARDING VERIFIED: inside=true at x1504,y1983.1958. Stalls because contacts=[hvu_boat_1,portal_hvu_boat], collidedObj=portal_hvu_boat, but old atFishing only collidedObj. 0.4.14 uses contact set, native fishing target.handleInteraction on confirmed contact with throttle and player state guards, like mining. Regression overlap portal/shore test. Await live catch verification.
+
+0.4.14 inside=true but catches not started. Official base entity handleInteraction() is empty. Player.interact invokes handleGeneralInteractionProperties(), which processes minigame=fishing and calls startMinigame -> manager.start -> native canPlay/access/attempt checks. 0.4.15 fishingInteraction uses handleGeneralInteractionProperties on confirmed unlocked available fishing contact. Regression mock makes old empty-method call throw. Await live.
+
+0.4.15 VIP continuous catches VERIFIED: inside=true, successive fishing:complete true, inventory 113->117->121 (+4). 0.4.16 diamond display subscribes gameState.totalDiamonds$ (official HUD stream subtracts sweepstakes diamonds_spent) instead of raw auth cumulative total. Tests update/zero balance. Await live display check.
+
+0.4.16 live VIP fish count175->195, delivery195->185->175, level71->72, diamond available4050->4600 VERIFIED. Return position1038,1278 but native VIP flag stilltrue; exclusively selects inaccessible ship areas. 0.4.17 inside combines native flag with ship bounds derived from VIP fishing entities; outside requires native NPC boarding again. No native flag mutation. Regression stale flag outside/inside.
+
+0.4.17 full LIVE cycle VERIFIED 2026-10-13: user multiplier4.5 retained, VIP fishing inventory260->350, native capacity causes delivery340->330->320 then further deliveries to220, overall72->73, map_hub->map_fishing, reboard inside=true at1504,1929.6665, fishing success inventory220->225. Available diamonds4600 displayed. No new reload needed. GitHub latest uploads still unconfirmed; local version0.4.17.
+
+0.4.18 fixes premature recast: official fishing.show keeps isOpen$ true through rod pull animation while server attempt may already clear. snapshot.canPlay must require isOpen$ false; atFishing wait releases directions. Regression server-ready/open=true cannot recast. Await live motion check.
+
+0.4.18 live continuous catches345->395 but position briefly jumps from ship1504,1981 to NPC1385,1903 without delivery. Slider action used generic X -> player.interact invokes handleExternalInteraction then can also interact collided exit portal because native general start bypassed player interaction state. 0.4.19 slider-visible interaction directly calls native fishing manager.handleInteraction (timedClickSlider.handleClick), no generic X, release directions. Await live stationary-round verification.
+
+0.4.19 LIVE stationary fishing VERIFIED: consecutive observations x1504 y1979.386500000001 unchanged, held=[], inside=true, successful catches inventory300->330 over multiple rounds. No observed unintended exit during sample. This validates direct native slider manager interaction.
+
+0.4.19 random live mining completed true, inventory216->224. Changing selection to mining while VIP fishing open revealed mode-switch wait indefinitely; native fishing slider needs direct interaction even when requested mode is mining/hunting. 0.4.20 direct slider path keys on fishingOpen, excludes boss, rather than mode=fishing. Test explicit mining-selected/fishing-open interaction. Restore user selection random after diagnosis; still need mining+hunting live cycle verification.
+
+0.4.20 LIVE RANDOM CYCLE VERIFIED: hunting start, combat/dodge with changing target, hunting inventory197->212; then mining active veins/safezone, mining:complete true, mining inventory224->256; switched fishing:start. No stall reproduced in this full hunting->mining->fishing cycle. Keep random enabled.
+
+0.4.20 later random fishing stalls inventory450, no new start/complete after hunting completion, atVIP and wait. Found shouldReturnFishing only tests slider visible, allowing native open/attempt pending round exit. 0.4.21 requires !fishingOpen before random fishing exit. Regression hidden slider/open round. Reload current game to clear stall, await user extension reload for prevention.
+
+
+0.4.22 UPDATE CHECKER: updates.js imported by background.js. Fixed raw GitHub main/manifest.json endpoint; numeric version comparison; chrome.storage.local dvUpdate cache; 360-minute alarm; manual force bypass. Panel sends dv-update-check and renders status/download link. Only JSON is read; no remote code execution or automatic replacement. Existing dvAutoplay settings untouched. updates.test.cjs covers version ordering, cache, offline/malformed JSON and settings preservation. Local ZIPs built; browser reload/network verification and GitHub publication are not yet confirmed. For new releases commit manifest.json and all source files together before telling users an update is available.

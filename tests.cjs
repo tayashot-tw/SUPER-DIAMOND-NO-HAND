@@ -42,13 +42,13 @@ assert.ok(path.every(p=>!polygonIntersectsRect(wall,{x:p.x-2,y:p.y-2,width:4,hei
 assert.equal(findPath({x:0,y:0},{x:48,y:0},[wall],{x:2,y:2}),null);
 assert.equal(polygonIntersectsRect([{x:0,y:4},{x:10,y:4},{x:10,y:6},{x:0,y:6}],{x:4,y:0,width:2,height:10}),true);
 async function mainIntegration(){
-  let now=0,interval,subscribed=0,originalCalls=0;
+  let now=0,interval,subscribed=0,originalCalls=0,diamondNext;
   const messages=[],keys=[],listeners={},actions=[];
   const data={overall_level:{level:21,experience:100},activities_data:{fishing:{level:5,has_played:true,next_quest:{item:'BLUE_FISH',quantity:2}}}};
   const observable=value=>({subscribe(cb){subscribed++;cb(value);return {unsubscribe(){}};}});
   const player={body:{x:0,y:0,width:10,height:10},collidedObj:null};
   const services={player:{data:()=>data},inventory:{items$:observable({fishing:{is_full:false,items:[]}})},quest:{activityQuests$:observable({fishing:{quest:data.activities_data.fishing.next_quest}})},
-    gameState:{inGameLoading$:{value:false}},rpg:{isConnected$:{value:true},teleport:id=>actions.push(id)},auth:{userData$:{value:{data:{total_diamonds:5500}}}},ui:{}};
+    gameState:{inGameLoading$:{value:false},totalDiamonds$:{subscribe(cb){subscribed++;diamondNext=cb;cb(4000);return {unsubscribe(){}};}}},rpg:{isConnected$:{value:true},teleport:id=>actions.push(id)},auth:{userData$:{value:{data:{total_diamonds:5500}}}},ui:{}};
   const level={label:'map_hub',preventUpdates:false,managers:{entity:{player,entities:[]}}};
   class FakeGame{constructor(){this.services=services;this.world={services,managers:{level:{currentLevel:level}},uiManager:{}};this.started=false;}init(){originalCalls++;this.started=true;}}
   const context={console,URL,performance,Date:{now:()=>now},navigator:{onLine:true},document:{hidden:false,activeElement:null,addEventListener(){}},
@@ -60,15 +60,28 @@ async function mainIntegration(){
   vm.runInContext(fs.readFileSync(__dirname+'/planner.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/activities.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/navigation.js','utf8'),context);
-  const adapter=fs.readFileSync(__dirname+'/main.js','utf8').replace('await import(new URL(`../${VERSION}`,location.href).href)','await Promise.resolve({Game:FakeGame})').replace('  hook();','  globalThis.testPolygons=polygonList;globalThis.testNavigation={feet,navigationGoal,navigate,fishingAreas,transition,navigationGoals,miningInteraction,hasContact,auditDamage};hook();');
+  const adapter=fs.readFileSync(__dirname+'/main.js','utf8').replace('await import(new URL(`../${VERSION}`,location.href).href)','await Promise.resolve({Game:FakeGame})').replace('  hook();','  globalThis.testExecute=execute;globalThis.testSnapshot=snapshot;globalThis.testPolygons=polygonList;globalThis.testNavigation={feet,navigationGoal,navigate,fishingAreas,transition,navigationGoals,miningInteraction,fishingInteraction,hasContact,auditDamage};hook();');
   vm.runInContext(adapter,context);await new Promise(resolve=>setImmediate(resolve));
-  const game=new FakeGame();game.init();assert.equal(originalCalls,1);assert.equal(subscribed,2);
+  assert.doesNotThrow(()=>context.testSnapshot(),'cold start before Game init must not throw');interval();
+  const game=new FakeGame();game.init();assert.equal(originalCalls,1);assert.equal(subscribed,3);
+  assert.equal(context.testSnapshot().diamonds,4000);diamondNext(3900);assert.equal(context.testSnapshot().diamonds,3900);diamondNext(0);assert.equal(context.testSnapshot().diamonds,0,"zero balance must not fall back to cumulative total");diamondNext(4000);
   const box={pos:{x:36,y:0},toPolygon(){return {pos:this.pos,points:[{x:0,y:0},{x:24,y:0},{x:24,y:60},{x:0,y:60}]};}};
   const polygons=context.testPolygons({collisionMap:[{body:box}]});
   assert.equal(polygons.length,1,'SAT.Box tile walls must not be discarded');
   assert.equal(polygons[0][1].x,60);
+  const halfBox={pos:{x:0,y:0},w:64,h:64,toPolygon:box.toPolygon};
+  const half=context.testPolygons({collisionMap:[{body:halfBox,type:'half',rotation:'north'}]})[0];
+  assert.equal(Math.min(...half.map(p=>p.y)),32,'half tile must leave its upper half walkable');
+  const rotated=context.testPolygons({collisionMap:[{body:halfBox,type:'half',rotation:'east'}]})[0];
+  assert.ok(Math.max(...rotated.map(p=>p.x))<=32.000001,'rotation must match native collision geometry');
+  const triangle=context.testPolygons({collisionMap:[{body:halfBox,type:'full-diagonal',rotation:'north'}]})[0];assert.equal(triangle.length,3);
+
   assert.equal(findPath({x:0,y:24},{x:96,y:24},polygons,{x:2,y:2}).some(p=>p.y<=-12||p.y>=72),true);
   const nativePlayer={body:{x:0,y:-46,width:32,height:64}};
+  const narrowBridge=[[{x:-100,y:-100},{x:0,y:-100},{x:0,y:200},{x:-100,y:200}],[{x:36,y:-100},{x:136,y:-100},{x:136,y:200},{x:36,y:200}]];
+  assert.ok(findPath({x:18,y:0},{x:18,y:96},narrowBridge,{x:16,y:6},6),'native feet and fine grid must traverse a 36px passage');
+  const tinyNpc={label:'npc_hvu_boat',body:{x:96,y:0,width:50,height:86},collider:{shape:{points:[0,0,1,0,1,1,0,1]}}};
+  assert.ok(context.testNavigation.navigationGoals(tinyNpc,nativePlayer).length>0,'NPC shape must not erase all collision-checked approach candidates');
   const damagePlayer={hp:55,getCurrentHealth(){return this.hp;},onShot(source,amount){this.hp-=amount;return source.name;}};
   context.testNavigation.auditDamage(damagePlayer);context.testNavigation.auditDamage(damagePlayer);
   assert.equal(damagePlayer.onShot({name:'monster_test'},7),'monster_test');
@@ -93,7 +106,7 @@ async function mainIntegration(){
   listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true}});
   interval();now=5000;interval();
   assert.deepEqual(actions,['waypoint_fishing']);
-  assert.ok(messages.some(m=>m.type==='status'&&m.level===21&&m.diamonds===5500));
+  assert.ok(messages.some(m=>m.type==='status'&&m.level===21&&m.diamonds===4000));
   // Server connection loss releases a held movement without invoking a game action.
   services.rpg.isConnected$.value=false;now=6000;interval();
   assert.equal(actions.length,1);
@@ -101,10 +114,13 @@ async function mainIntegration(){
   services.rpg.isConnected$.value=true;now=38000;interval();assert.equal(actions.length,1);
   now=43000;interval();assert.equal(actions.length,2);
   const slider={visible:true,isInteracted:false,cooldownTimer:0,indicator:{x:50},successZone:{x:30,width:40},totalClicks:0};
-  level.label='map_fishing';level.managers.fishing={fishing:{timedClickSlider:slider,isOpen$:{value:true}},canPlayMinigame:()=>true,maxMasteryLevel:()=>false};
-  now=45000;interval();assert.ok(keys.some(e=>e.type==='keydown'&&e.code==='Enter'));
+  let nativeFishingClicks=0;const keyCountBeforeSlider=keys.length;
+  level.label='map_fishing';level.managers.fishing={handleInteraction(){nativeFishingClicks++;},fishing:{timedClickSlider:slider,isOpen$:{value:true}},canPlayMinigame:()=>true,maxMasteryLevel:()=>false};
+  now=45000;interval();assert.equal(nativeFishingClicks,1);assert.equal(keys.slice(keyCountBeforeSlider).some(e=>e.type==='keydown'&&e.code==='Enter'),false,'slider must not invoke overlapping exit portal via generic interaction key');
+  listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'mining'}});context.testExecute({type:'interact'},{slider:{visible:true},fishingOpen:true});assert.equal(nativeFishingClicks,2,'mode switch must still finish current native fishing slider');
+  listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'fishing'}});
   services.rpg.isConnected$.value=false;now=45100;interval();
-  assert.ok(keys.some(e=>e.type==='keyup'&&e.code==='Enter'),'offline must release the interaction key');
+  assert.equal(nativeFishingClicks,2,'offline must not invoke the fishing controller');
   const shore={id:101,name:'shore',body:{x:100,y:100,width:44,height:236},canInteract:true,properties:{get:()=>[{name:'minigame',value:'fishing'}]}};
   level.managers.entity.entities=[shore];
   assert.equal(context.testNavigation.fishingAreas(level)[0],shore);
@@ -174,6 +190,13 @@ async function mainIntegration(){
   assert.equal(context.testNavigation.miningInteraction(level),true);assert.equal(collected,1);
   now=108030;context.testNavigation.miningInteraction(level);assert.equal(collected,1,'native collect callback must respect interaction cooldown');
   now=108650;context.testNavigation.miningInteraction(level);assert.equal(collected,2);
+  let caught=0;const vipShore={name:'hvu_boat_1',body:{x:0,y:0,width:64,height:64},enabled:true,canInteract:true,properties:{get:()=>[{name:'minigame',value:'fishing'}]},handleInteraction(){throw new Error('base no-op method must not be used');},handleGeneralInteractionProperties(){caught++;}};
+  const portal={name:'portal_hvu_boat'};level.managers.entity.entities=[vipShore,portal];player.collidedObj=portal;player.collidedEntities.staying=new Map([[1,vipShore],[2,portal]]);now=109300;
+  assert.equal(context.testSnapshot().atFishing,true,'overlapping exit portal must not hide fishing contact');
+  assert.equal(context.testNavigation.fishingInteraction(level),true);assert.equal(caught,1,'invoke native fishing target instead of exit portal');
+  listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'fishing'}});
+  level.managers.fishing={canPlayMinigame:()=>true,fishing:{isOpen$:{value:true}}};assert.equal(context.testSnapshot().canPlay,false,'server-ready must not interrupt the native rod animation');level.managers.fishing.fishing.isOpen$.value=false;assert.equal(context.testSnapshot().canPlay,true);
+
   player.collidedEntities.staying.clear();now=109300;assert.equal(context.testNavigation.miningInteraction(level),false);
 
 

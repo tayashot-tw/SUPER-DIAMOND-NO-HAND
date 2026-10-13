@@ -1,6 +1,6 @@
 # SUPER DIAMOND NO HAND
 
-使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.5**。
+使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.22**。
 
 ## 風險與實測狀態
 
@@ -10,8 +10,8 @@
 
 ## 下載與安裝
 
-- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.5.zip)
-- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.5.zip)
+- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.22.zip)
+- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.22.zip)
 
 這是供使用者自行載入的未封裝來源 ZIP，**並非瀏覽器商店上架或已簽章 CRX**。GitHub ZIP 頁面按下載圖示或 Download raw file，再解壓縮到固定資料夾。
 
@@ -22,7 +22,7 @@
 3. 按「載入解壓縮」，選擇解壓縮後包含 `manifest.json` 的資料夾。
 4. 停用舊版 Diamond Valley 套件，避免重複執行。
 5. 在 Edge 開啟 [台灣版遊戲](https://diamondvalley.withgoogle.com/intl/ALL_tw/game/)，登入並完成對應玩法教學。
-6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.5」。
+6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.22」。
 
 ### Chrome
 
@@ -66,7 +66,7 @@
 
 ## 開發與驗證
 
-只請求 `storage` 權限，內容腳本限定官方台灣版遊戲網址。設定保存在瀏覽器本機，不上傳 GitHub、診斷伺服器或其他外站。套件讀取遊戲即時狀態、模擬按鍵及呼叫原生互動流程；不直接修改鑽石、經驗或伺服器獎勵。
+使用 `storage` 儲存設定、`alarms` 定期檢查更新，並允許讀取固定 GitHub 儲存庫的 raw 版本資料，內容腳本限定官方台灣版遊戲網址。設定保存在瀏覽器本機，不上傳 GitHub、診斷伺服器或其他外站。套件讀取遊戲即時狀態、模擬按鍵及呼叫原生互動流程；不直接修改鑽石、經驗或伺服器獎勵。
 
 需要 Node.js 與 Python 3：
 
@@ -75,6 +75,7 @@ node tests.cjs
 node navigation.test.cjs
 node activities.test.cjs
 node settings.test.cjs
+node updates.test.cjs
 python build.py
 ```
 
@@ -97,10 +98,24 @@ python build.py
 
 自動處理開場「立即遊玩」。釣魚及伺服器提交階段停止追擊；勝敗回報後等結果畫面再返回任務，失敗未達連敗上限則按重試。首次勝利不依賴隱藏的結果按鈕，不自動打開獎勵／抽獎頁。新增邏輯測試通過，完整實戰仍待驗證。
 
-## 當日上限自動切換（0.4.5）
+## 當日上限自動切換（0.4.4 起）
 
 目前模式的交貨畫面顯示當日上限時，自動切換至尚未碰到上限、已完成教學的釣魚／挖礦／打怪模式，手動選擇模式也適用。順序為釣魚、挖礦、打怪，跳過目前模式與已達上限模式。全數遇到上限後保持啟用但暫停動作，每分鐘在線且分頁可見時刷新官方角色資料；每日交貨計數降低後自動恢復。官方交貨上限是共用的，切換模式不會增加交貨額度。已達上限紀錄保存在目前頁面，重新整理後重新判斷。停止／Esc 仍立即停止。
 
-## VIP 登船修正（0.4.5）
+## VIP 登船修正（0.4.5 起）
 
 50 等後先尋找船隻管理員，船票資料尚未同步不再阻止前往；不修改或繞過官方船票檢查。登船對話在角色失去碰撞接觸時仍可繼續。面板診斷增加 eligible、hasPass、inside、boat，以確認資格、登船結果與 NPC。實機仍需重新載入後驗證。
+
+### 0.4.17 VIP 實測結果
+
+已驗證 VIP 釣魚、交貨後回程、重新登船與恢復釣魚的完整循環。鑽石欄位顯示官方 HUD 的可用餘額。背包滿時可先交貨騰出空間；其餘情況依使用者設定的倍數判斷。
+
+### 0.4.20 輪替實測
+
+已實測打怪 → 挖礦 → 釣魚的自動輪替，藥草增加 15、礦石增加 32。這次完整循環未重現卡住；不代表所有地圖與回合均已測試。
+
+### GitHub 更新提示
+
+0.4.22 起每 6 小時從本儲存庫 main 分支的 manifest.json 檢查版本。面板「GitHub 更新」可立即檢查。新版時顯示原始碼 ZIP 下載連結；ZIP 解壓後將 manifest.json 與所有 JS 檔覆蓋原套件資料夾，於 edge://extensions 或 chrome://extensions 按重新載入，再重新整理遊戲。不要刪除再安裝，保留相同載入路徑以保留設定。ZIP、manifest.json 與程式碼需由維護者一起提交到 GitHub 才會更新；只修改本機不會通知其他使用者。此功能不會下載並執行遠端程式碼，也不會自動取代安裝檔。
+
+0.4.21 已補上釣魚回合結束前不離場的防護；滿背包後再次進入釣魚仍待驗證。0.4.22 更新檢查通過模擬測試，瀏覽器實際連線仍待重新載入驗證。

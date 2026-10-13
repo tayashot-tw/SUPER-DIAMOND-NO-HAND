@@ -1,4 +1,6 @@
+if(typeof importScripts==='function')importScripts('updates.js');
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
+  if(message?.type==='dv-update-check'&&sender.frameId===0&&sender.tab?.id&&sender.url?.startsWith('https://diamondvalley.withgoogle.com/intl/ALL_tw/game/')){DVUpdates.check(message.force===true).then(reply).catch(()=>reply({error:true}));return true;}
   if(message?.type!=='dv-autoplay-recover'||sender.frameId!==0||!sender.tab?.id||!sender.url?.startsWith('https://diamondvalley.withgoogle.com/intl/ALL_tw/game/'))return;
   (async()=>{
     const data=await chrome.storage.local.get(['dvAutoplay','dvRecovery']);
