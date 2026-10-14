@@ -2,23 +2,36 @@
   'use strict';
   const GAME_MODULES=['game-KRZLVEFN.js','game-74YGLLZX.js','game-6NMIDNT2.js'];const hookedPrototypes=new WeakSet();
   const engine=new globalThis.DVAutoplay.Autoplayer();
-  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let dailyWaiting=false,lastDailyRefresh=0,vipBoardingLevel=null;
+  let settings=globalThis.DVSettings.normalize({});const bossController=new globalThis.DVSettings.BossController();const dailyRotation=new globalThis.DVSettings.DailyRotation();let bossRestored=false;let dailyWaiting=false,lastDailyRefresh=0,vipBoardingLevel=null;
   const activities=new globalThis.DVActivities.ActivityPlanner();let mode='fishing',requestedMode='fishing',rotate=false,modeStarted=0,lastItemCount=null,deliveryBatchMode=null;
-  let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null,routeFine=false;
+  let moduleReady=false;let game=null,enabled=false,hookError='',lastStatus=0,lastNavigation=0,path=null,pathTarget='',pathMap=null,routeAxis=null,routeWaypoint=null,routeSearch=null,routeFine=false;
   let disconnectedAt=null,recoveryRequested=false,lastPulse=0,pendingTransition=null;
   const auditEvents=[],auditedManagers=new WeakSet(),auditedPlayers=new WeakSet();
   const audit=(event,detail)=>{auditEvents.push({event,detail,at:Date.now()});if(auditEvents.length>24)auditEvents.shift();};
-  function auditMining(level){const manager=level?.managers?.[mode];if(!manager||auditedManagers.has(manager))return;auditedManagers.add(manager);const activityMode=mode;for(const name of ['start','playerActivateVein','playerReachedSafezone','complete','die','success','fail']){const original=manager[name];if(typeof original!=='function')continue;manager[name]=function(...args){if(activityMode==='boss'&&!this.hasComplete&&['success','fail'].includes(name))bossController.result(name==='success',signal(getWorld()?.services?.player?.data)?.overall_level?.level??0,settings);audit(activityMode+':'+name,['string','boolean'].includes(typeof args[0])?args[0]:null);return original.apply(this,args);};}}
+  function auditMining(level){if(mode==='boss')auditBoss(level);const manager=level?.managers?.[mode];if(!manager||auditedManagers.has(manager))return;auditedManagers.add(manager);const activityMode=mode;for(const name of ['start','playerActivateVein','playerReachedSafezone','complete','die','success','fail']){const original=manager[name];if(typeof original!=='function')continue;manager[name]=function(...args){if(activityMode==='boss'&&!this.hasComplete&&['success','fail'].includes(name)){bossController.result(name==='success',signal(getWorld()?.services?.player?.data)?.overall_level?.level??0,settings);post('bossProgress',{progress:bossController.progress()});}audit(activityMode+':'+name,['string','boolean'].includes(typeof args[0])?args[0]:null);return original.apply(this,args);};}}
+  const auditedBossControllers=new WeakSet();
+  function bossTrace(level,event,extra={}){
+    const p=level?.managers?.entity?.player,m=level?.managers?.boss;if(!p?.body)return;
+    const b=p.body,rect=r=>r?{x:r.x,y:r.y,width:r.width,height:r.height}:null;
+    const overlaps=globalThis.DVNavigation.combatDangers(level.managers.entity.entities).filter(d=>!d.warning&&b.x<d.body.x+d.body.width&&b.x+b.width>d.body.x&&b.y<d.body.y+d.body.height&&b.y+b.height>d.body.y).map(d=>({name:d.name,body:rect(d.body)})).slice(0,12);
+    const trace={at:Date.now(),event,phase:m?.boss?.currentActivity,pending:signal(m?.pendingUpdates),health:p.getCurrentHealth?.(),position:rect(b),held:[...held],overlaps,...extra};
+    audit(event,trace);post('bossTrace',{trace});
+  }
+  function auditBoss(level){
+    const m=level?.managers?.boss;if(!m||auditedBossControllers.has(m))return;auditedBossControllers.add(m);
+    for(const name of ['playerHitByDanger','playerHitByAoe','playerHitByProjectile','bossIsHit']){const original=m[name];if(typeof original!=='function')continue;m[name]=function(...args){bossTrace(level,'boss:'+name);return original.apply(this,args);};}
+    const c=m.boss,original=c?.updatePlayerHealth;if(typeof original==='function')c.updatePlayerHealth=function(...args){const before=level.managers.entity.player?.getCurrentHealth?.(),result=original.apply(this,args),after=level.managers.entity.player?.getCurrentHealth?.();if(Number.isFinite(before)&&Number.isFinite(after)&&after<before)bossTrace(level,'boss:healthDrop',{before,after,amount:before-after});return result;};
+  }
   function auditDamage(player){
     if(!player||auditedPlayers.has(player)||typeof player.onShot!=='function')return;
     auditedPlayers.add(player);const original=player.onShot;
     player.onShot=function(...args){const before=this.getCurrentHealth?.();const result=original.apply(this,args);const after=this.getCurrentHealth?.();if(Number.isFinite(before)&&Number.isFinite(after)&&after<before)audit('damage',{source:args[0]?.name??args[0]?.label,amount:before-after,health:after});return result;};
   }
-  const held=new Set();let navigationTimer=null,pulseTimer=null,lastPosition=null,stuckSince=null,observedStep=6;const polygonCache=new WeakMap();
+  const held=new Set();let navigationTimer=null,pulseTimer=null,lastPosition=null,stuckSince=null,observedStep=6;const polygonCache=new WeakMap();const bossStands=new WeakMap();let routeWide=false,routePrecise=false;
   let retryAt=0,retryMessage='',errorCount=0,lastRecovery=0,missingSince=null,unreadySince=null,fishingWaitSince=null;const blockedTargets=new Map();
   const targetKey=e=>e?.uid??e?.id??e?.name;
   const available=e=>e?.body&&!e.destroyed&&e.enabled!==false&&(blockedTargets.get(targetKey(e))??0)<=Date.now();
-  function retry(message,target=null){if(target)blockedTargets.set(targetKey(target),Date.now()+30000);clearNavigation();retryAt=Date.now()+1500;retryMessage=message;post('retry',{message,diagnostics:{mode,message,navigation:target&&String(target.label??target.name??'').startsWith('npc_')?{start:feet(getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player),polygons:polygonList(getWorld()?.managers?.level?.currentLevel)}:null,target:target?{name:target.name,id:target.id,polygon:interactionPolygon(target),goals:navigationGoals(target,getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player)}:null}});}
+  function retry(message,target=null){if(target)blockedTargets.set(targetKey(target),Date.now()+30000);clearNavigation();retryAt=Date.now()+1500;retryMessage=message;post('retry',{message,diagnostics:{mode,message,navigation:target&&(target.bossTarget||String(target.label??target.name??'').startsWith('npc_'))?{start:feet(getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player),polygons:polygonList(getWorld()?.managers?.level?.currentLevel)}:null,target:target?{name:target.name,id:target.id,polygon:interactionPolygon(target),goals:navigationGoals(target,getWorld()?.managers?.level?.currentLevel?.managers?.entity?.player)}:null}});}
   function fishingAreas(level){const player=level?.managers?.entity?.player,p=player?.body?feet(player):null;if(!p)return [];return (level.managers.entity.entities??[]).filter(e=>available(e)&&isFishingArea(e)&&e.canInteract&&!e.isLocked?.()).sort((a,b)=>Math.hypot(center(a).x-p.x,center(a).y-p.y)-Math.hypot(center(b).x-p.x,center(b).y-p.y));}
   const channel='diamond-valley-autoplay-v2';
   const post=(type,data={})=>window.postMessage({channel,source:'bot',type,...data},location.origin);
@@ -68,8 +81,9 @@
   function combat(level){
     const player=level.managers.entity.player,target=globalThis.DVActivities.target(level,mode);
     if(!target||player.isCutscene||player.lockedCamera){clearNavigation();return;}
+    if(mode==='boss'&&settings.bossGuide){if(bossStands.has(target)&&!globalThis.DVNavigation.validBossStance(bossStands.get(target),player,target))bossStands.delete(target);const anchor=bossStands.get(target)??globalThis.DVNavigation.bossAnchor(player,target,level.managers.entity.entities);if(anchor&&globalThis.DVNavigation.bossAnchorBlocked(anchor,player,globalThis.DVNavigation.bossGuideDangers(level.managers.entity.entities,player))){clearNavigation();release();return;}if(anchor&&(Math.abs(player.body.x-anchor.x)>16||Math.abs(player.body.y-anchor.y)>16)){const f=feet(player);navigate(level,{name:'boss_attack_'+target.id,id:'boss_attack_'+target.id,bossTarget:target,body:{x:anchor.x,y:anchor.y,width:player.body.width,height:player.body.height},standGoal:{x:anchor.x+f.halfX,y:anchor.y+f.offset+f.halfY}});return;}}
     if(navigationTimer){clearTimeout(navigationTimer);navigationTimer=null;}
-    const code=globalThis.DVNavigation.combatDirection(player,target,Math.max(12,Math.min(20,observedStep/2)));
+    const code=mode==='boss'&&settings.bossGuide?globalThis.DVNavigation.bossDirection(player,target,level.managers.entity.entities,polygonList(level),bossStands.get(target)):globalThis.DVNavigation.combatDirection(player,target,Math.max(12,Math.min(20,observedStep/2)));
     path=null;routeSearch=null;
     if(code){move(code);navigationTimer=setTimeout(()=>{key('keyup',code);held.delete(code);navigationTimer=null;},10);}else release();
   }
@@ -116,6 +130,7 @@
     release();if(Date.now()-lastPulse<650)return true;lastPulse=Date.now();target.handleInteraction();return true;
   }
   function navigationGoals(entity,player){
+    if(entity.standGoal)return [entity.standGoal,...[-6,6].flatMap(dx=>[-6,0,6].map(dy=>({x:entity.standGoal.x+dx,y:entity.standGoal.y+dy})))];
     const c=center(entity),r=entity.body,p=feet(player);if(!c||!p)return null;
     const pad=2;
     // Approach from outside a solid object's front edge. The full player body
@@ -168,17 +183,20 @@
     const targetId=target.uid??target.id??target.name;
     if(!path||pathTarget!==targetId||pathMap!==level){
       if(!routeSearch||pathTarget!==targetId||pathMap!==level){
-        release();routeFine=false;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX+4,y:p.halfY+4});pathTarget=targetId;pathMap=level;routeAxis=null;routeWaypoint=null;
+        release();routeFine=false;routeWide=false;routePrecise=false;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX+4,y:p.halfY+4});pathTarget=targetId;pathMap=level;routeAxis=null;routeWaypoint=null;
       }
       const result=routeSearch.step(200,4);
       if(!result.done){release();return;}
-      if(!result.path&&!routeFine&&String(target.label??target.name??'').startsWith('npc_')){routeFine=true;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX,y:p.halfY},6,48000);release();return;}
+      if(!result.path&&!routeFine&&(target.standGoal||String(target.label??target.name??'').startsWith('npc_'))){routeFine=true;routeSearch=globalThis.DVAutoplay.createPathSearch(p,navigationGoals(target,player)??[],polygonList(level),{x:p.halfX,y:p.halfY},6,48000);release();return;}
+      if(!result.path&&target.bossTarget&&!routeWide){routeWide=true;const original=globalThis.DVNavigation.bossAnchor(player,target.bossTarget,level.managers.entity.entities),g={x:original.x+p.halfX,y:original.y+p.offset+p.halfY},goals=[-12,0,12].flatMap(dx=>[-36,-24,-12,0,12,24,36].map(dy=>({x:g.x+dx,y:g.y+dy})));routeSearch=globalThis.DVAutoplay.createPathSearch(p,goals,polygonList(level),{x:p.halfX,y:p.halfY},6,48000);release();return;}
+      if(!result.path&&target.bossTarget&&routeWide&&!routePrecise){routePrecise=true;const anchor=globalThis.DVNavigation.bossAnchor(player,target.bossTarget,level.managers.entity.entities),goals=[-12,-6,0,6,12].flatMap(dx=>[-36,-24,-12,0,12,24,36].map(dy=>({x:anchor.x+p.halfX+dx,y:anchor.y+p.offset+p.halfY+dy})));routeSearch=globalThis.DVAutoplay.createPathSearch(p,goals,polygonList(level),{x:p.halfX,y:p.halfY},3,120000);release();return;}
+      if(routeWide&&result.path?.length&&target.bossTarget){const goal=result.path.at(-1),anchor={x:goal.x-p.halfX,y:goal.y-p.offset-p.halfY};if(globalThis.DVNavigation.validBossStance(anchor,player,target.bossTarget))bossStands.set(target.bossTarget,anchor);}
       routeSearch=null;lastPosition=p;stuckSince=null;path=result.path?globalThis.DVNavigation.simplify(result.path):null;
-      if(!path){retry(`暫時無法到達 ${target.name??'目標'}，嘗試其他目標`,target);return;}
+      if(!path){if(target.bossTarget)bossStands.delete(target.bossTarget);retry(`暫時無法到達 ${target.name??'目標'}，嘗試其他目標`,target);return;}
 
     }
     const tolerance=Math.min(9,Math.max(3,observedStep/2+1));
-    while(path.length&&Math.abs(path[0].x-p.x)<=tolerance&&Math.abs(path[0].y-p.y)<=tolerance)path.shift();
+    while(path.length&&Math.abs(path[0].x-p.x)<=tolerance&&Math.abs(path[0].y-p.y)<=tolerance){if(path.length>1&&!globalThis.DVNavigation.routeSegmentClear(p,path[1],polygonList(level)))break;path.shift();}
     if(!path.length){release();if(player.collidedObj===target)interact();else{path=null;}return;}
     const dx=path[0].x-p.x,dy=path[0].y-p.y;
     if(routeWaypoint!==path[0]){routeWaypoint=path[0];routeAxis=null;}
@@ -186,6 +204,10 @@
     // Near a corner, release between control ticks so several game frames cannot overshoot it.
     const remaining=direction.axis==='x'?Math.abs(dx):Math.abs(dy);
     if(direction.code&&remaining<Math.max(24,observedStep*1.5)&&!navigationTimer){const code=direction.code;navigationTimer=setTimeout(()=>{key('keyup',code);held.delete(code);navigationTimer=null;},10);}
+  }
+  function readSlider(slider,active){
+    if(!slider||!active||!slider.visible||slider.destroyed||slider.indicator?.destroyed||slider.successZone?.destroyed)return null;
+    try{const indicator=slider.indicator?.x,left=slider.successZone?.x,width=slider.successZone?.width;if(![indicator,left,width].every(Number.isFinite)||width<=0)return null;return {visible:true,done:slider.isInteracted,cooldown:slider.cooldownTimer,indicator,left,width,clicks:slider.totalClicks};}catch(error){return null;}
   }
   function snapshot(){
     const world=getWorld(),level=world?.managers?.level?.currentLevel,services=world?.services,player=level?.managers?.entity?.player;
@@ -230,7 +252,7 @@
       submitting:!!dialog?.submissionInProgress,
       dailyLimit:!!(dialog?.dailySubmitLimitText?.parent&&dialog.dailySubmitLimitText.parent===dialog.container),
       otherDialog:!!(player?.isCutscene||subject(services?.ui?.isRewardsVisible$)||subject(services?.ui?.isBagVisible$)||subject(services?.ui?.isSettingsVisible$)||subject(services?.ui?.isMapVisible$)),
-      slider:slider?{visible:!!slider.visible&&(mode==='boss'||!!level?.managers?.fishing?.fishing?.isOpen$?.value),done:slider.isInteracted,cooldown:slider.cooldownTimer,indicator:slider.indicator.x,left:slider.successZone.x,width:slider.successZone.width,clicks:slider.totalClicks}:null
+      slider:readSlider(slider,mode==='boss'||!!level?.managers?.fishing?.fishing?.isOpen$?.value)
     };
   }
   let questState=null,inventoryState=null,diamondBalance=null,subscriptions=[];
@@ -243,6 +265,7 @@
     observe(instance.services?.gameState?.totalDiamonds$,value=>{if(typeof value==='number'&&Number.isFinite(value))diamondBalance=Math.max(0,value);});
   }
   async function hook(){
+    if(document.readyState&&document.readyState!=='complete'){setTimeout(hook,100);return;}
     const results=await Promise.allSettled(GAME_MODULES.map(async VERSION=>{
       const module=await import(new URL(`../${VERSION}`,location.href).href);
       const prototype=module.Game?.prototype;
@@ -251,7 +274,7 @@
       hookedPrototypes.add(prototype);
       const original=prototype.init;
       prototype.init=function(...args){connectGame(this);return original.apply(this,args);};
-      post('hook',{message:'已連接遊戲模組 '+VERSION+'；等待遊戲啟動'});
+      moduleReady=true;post('hook',{ready:true,message:'已連接遊戲模組 '+VERSION+'；等待遊戲啟動'});
     }));
     if(results.every(r=>r.status==='rejected')){hookError='無法連接目前遊戲模組';post('hook',{message:hookError});}
   }
@@ -260,17 +283,77 @@
   hook();
   window.addEventListener('message',event=>{
     if(event.source!==window||event.origin!==location.origin||event.data?.channel!==channel||event.data.source!=='panel')return;
-    if(event.data.type==='config'){settings=globalThis.DVSettings.normalize(event.data.settings);const nextMode=event.data.mode??'fishing';if(nextMode!==requestedMode&&(globalThis.DVActivities.names[nextMode]||nextMode==='random')){dailyWaiting=false;const returnMode=mode==='boss'?'fishing':mode;bossController.cancel();if(nextMode==='boss'){bossController.active=true;bossController.returnMode=returnMode;}deliveryBatchMode=null;requestedMode=nextMode;rotate=nextMode==='random';if(nextMode!=='random')mode=nextMode;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}const nextEnabled=event.data.enabled===true;if(nextEnabled!==enabled){clearNavigation();engine.reset();activities.lastAction=-Infinity;retryAt=0;missingSince=null;blockedTargets.clear();errorCount=0;}enabled=nextEnabled;}
+    if(event.data.type==='bossReset'){bossController.restore({});bossRestored=true;}
+    if(event.data.type==='config'){if(!bossRestored){bossController.restore(event.data.bossProgress);bossRestored=true;}settings=globalThis.DVSettings.normalize(event.data.settings);let nextMode=event.data.mode??'fishing';if(nextMode==='boss'&&(bossController.blocked||bossController.completedLevel!==null&&!bossController.active)){nextMode=bossController.returnMode??'fishing';post('modeFallback',{mode:nextMode,message:'恢復 Boss 進度，返回任務模式'});}if(nextMode!==requestedMode&&(globalThis.DVActivities.names[nextMode]||nextMode==='random'||nextMode==='stockpile')){dailyWaiting=false;const returnMode=mode==='boss'?'fishing':mode;bossController.cancel();if(nextMode==='boss'){bossController.active=true;bossController.returnMode=returnMode;}deliveryBatchMode=null;requestedMode=nextMode;rotate=nextMode==='random'||nextMode==='stockpile';if(nextMode==='stockpile')mode=settings.stockpileModes[0]??'fishing';else if(nextMode!=='random')mode=nextMode;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}const nextEnabled=event.data.enabled===true;if(nextEnabled!==enabled){clearNavigation();engine.reset();activities.lastAction=-Infinity;retryAt=0;missingSince=null;blockedTargets.clear();errorCount=0;}enabled=nextEnabled;}
   });
   window.addEventListener('offline',()=>{release();engine.reset();disconnectedAt=Date.now();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){release();clearNavigation();engine.reset();}});
   window.addEventListener('pagehide',release);
   window.addEventListener('keydown',event=>{if(event.isTrusted&&event.code==='Escape'){enabled=false;release();post('halt',{message:'已按 Esc 停止'});}});
+  let balanceSession=null,balanceCooldown=0;
+  function balanceAction(s,now){
+    const world=getWorld(),level=world?.managers?.level?.currentLevel;
+    const dialog=world?.uiManager?.exchangeDialog??world?.managers?.uiManager?.exchangeDialog;
+    const open=!!subject(dialog?.isOpen$)||!!subject(world?.services?.ui?.isExchangeDialogVisible$);
+    const close=message=>{const completedMode=balanceSession?.mode,data=signal(world?.services?.player?.data),bag=inventoryState?.[completedMode],quest=data?.activities_data?.[completedMode]?.next_quest;if(enabled&&completedMode&&!dailyRotation.exhausted.has(completedMode)&&bag&&(globalThis.DVActivities.stockPolicy(completedMode,bag.items,quest,settings.deliveryMultiplier).ready||!bag.is_full)){dailyWaiting=false;mode=completedMode;rotate=false;deliveryBatchMode=null;engine.reset();}balanceSession=null;balanceCooldown=now+60000;return {type:'closeExchange',message};};
+    if(!enabled||requestedMode!=='random'||!settings.autoBalance){return balanceSession?close('停止自動交換'):null;}
+    if(!s.ready||!s.online||s.connected===false||!s.visible||s.inputFocused)return balanceSession?{type:'exchangeWait',message:'等待交換連線與畫面恢復'}:null;
+    if(!s.inHub||s.submissionOpen||s.storyOpen||s.otherDialog||s.resultOpen)return null;
+    if(!balanceSession){
+      if(open||s.loading||now<balanceCooldown||bossController.active)return null;
+      const data=signal(world.services.player.data);
+      const candidates=['fishing','mining','hunting'].filter(k=>!dailyRotation.exhausted.has(k)&&data?.activities_data?.[k]?.has_played).sort((a,b)=>Number(!!inventoryState?.[b]?.is_full)-Number(!!inventoryState?.[a]?.is_full));
+      const chosen=candidates.find(k=>globalThis.DVExchange.plan(k,inventoryState?.[k]?.items,data?.activities_data?.[k]?.next_quest,settings.deliveryMultiplier,dialog?.itemExchangeConfig));
+      if(!chosen)return null;
+      const npc=(level.managers.entity.entities??[]).filter(e=>available(e)&&!e.isLocked?.()&&props(e).some(p=>p.value==='ui_exchange')).sort((a,b)=>Math.hypot(center(a).x-center(level.managers.entity.player).x,center(a).y-center(level.managers.entity.player).y)-Math.hypot(center(b).x-center(level.managers.entity.player).x,center(b).y-center(level.managers.entity.player).y))[0];
+      if(!npc){balanceCooldown=now+60000;return null;}
+      balanceSession={mode:chosen,npc,started:now,lastAction:0,pending:null,operations:0};clearNavigation();
+    }
+    const b=balanceSession;
+    if(now-b.started>120000)return close('交換流程逾時，稍後再試');
+    if(b.pending){
+      const current=globalThis.DVExchange.fingerprint(inventoryState?.[b.mode]?.items);
+      const rows=inventoryState?.[b.mode]?.items??[],source=rows.find(i=>i.name===b.pending.source)?.quantity,target=rows.find(i=>i.name===b.pending.target)?.quantity;
+      if(current!==b.pending.before&&source<b.pending.sourceQuantity&&target>b.pending.targetQuantity&&!dialog?.processingExchange&&!s.loading){b.pending=null;b.operations++;}
+      else if(now-b.pending.at>15000)return close('交換庫存尚未確認，暫停避免重複交換');
+      else return {type:'exchangeWait',message:'等待官方確認交換與庫存更新'};
+    }
+    if(s.loading||dialog?.processingExchange)return {type:'exchangeWait',message:'等待交換商店'};
+    if(!open){
+      if(!available(b.npc))return close('交換 NPC 暫時不可用');
+      if(hasContact(level.managers.entity.player,b.npc)){
+        if(now-b.lastAction<1000)return {type:'exchangeWait',message:'等待交換商店開啟'};
+        b.lastAction=now;return {type:'openExchange',message:'開啟素材交換商店'};
+      }
+      return {type:'navigateExchange',target:b.npc,message:'尋找素材交換 NPC'};
+    }
+    if(!dialog?.itemExchangeConfig?.length)return {type:'exchangeWait',message:'等待官方交換成本載入'};
+    if(subject(dialog.selectedActivityTab$)!==b.mode){if(now-b.lastAction<500)return {type:'exchangeWait',message:'等待交換分類更新'};b.lastAction=now;return {type:'exchangeTab',dialog,exchangeMode:b.mode,message:'切換素材交換分類'};}
+    const data=signal(world.services.player.data),quest=data?.activities_data?.[b.mode]?.next_quest;
+    const plan=globalThis.DVExchange.plan(b.mode,inventoryState?.[b.mode]?.items,quest,settings.deliveryMultiplier,dialog.itemExchangeConfig);
+    if(!plan||b.operations>=20)return close('素材交換完成或沒有可保留交貨存量的來源');
+    if(!plan.ready)return close('官方交換成本不可用，稍後再試');
+    const items=dialog.items?.[b.mode],output=items?.[dialog.tradeOutputIndex],index=items?.findIndex(i=>i.name===plan.source);
+    if(output?.name!==plan.target||index<0||items[index].disabled)return close('官方目前交換選項不可用');
+    if(subject(dialog.tradeInputIndex$)!==index){b.lastAction=now;return {type:'exchangeInput',dialog,index,message:'選擇多餘素材作為交換來源'};}
+    if(now-b.lastAction<500)return {type:'exchangeWait',message:'確認素材交換選項'};
+    if(dialog.invalidExchangeSelected)return close('官方交換按鈕尚不可用');
+    b.pending={before:globalThis.DVExchange.fingerprint(inventoryState?.[b.mode]?.items),at:now,source:plan.source,target:plan.target,sourceQuantity:inventoryState[b.mode].items.find(i=>i.name===plan.source).quantity,targetQuantity:inventoryState[b.mode].items.find(i=>i.name===plan.target).quantity};
+    return {type:'exchangeConfirm',dialog,message:'交換缺少素材：'+plan.target};
+  }
   function execute(action,s){
     const world=getWorld(),level=world?.managers?.level?.currentLevel;
-    if(!['navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
+    if(!['navigateExchange','navigateFishing','navigateVipFishing','navigateDelivery','navigateActivity','combat','dodge','wait'].includes(action.type))release();
     switch(action.type){
-      case 'dailyLimit':{const data=signal(world.services.player.data),next=dailyRotation.choose(mode,data);world.services.ui.hideQuestSubmissionDialog();deliveryBatchMode=null;bossController.cancel();clearNavigation();engine.reset();if(next){mode=next;requestedMode=next;rotate=false;dailyWaiting=false;post('modeFallback',{mode,message:'當日上限，自動切換至'+globalThis.DVActivities.names[mode]});}else{dailyWaiting=true;release();post('retry',{message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'});}break;}
+      case 'navigateExchange':navigate(level,action.target);break;
+      case 'openExchange':interact();break;
+      case 'exchangeTab':clickButton(action.dialog.tabs?.[action.exchangeMode]);break;
+      case 'exchangeInput':action.dialog.tradeInputIndex$?.next(action.index);break;
+      case 'exchangeConfirm':if(!action.dialog.processingExchange&&!action.dialog.invalidExchangeSelected)clickButton(action.dialog.exchangeButton);break;
+      case 'closeExchange':world?.services?.ui?.hideExchangeDialog?.();clearNavigation();break;
+      case 'exchangeWait':release();break;
+
+      case 'dailyLimit':{const data=signal(world.services.player.data),next=dailyRotation.choose(mode,data,inventoryState,settings.deliveryMultiplier);world.services.ui.hideQuestSubmissionDialog();deliveryBatchMode=null;bossController.cancel();clearNavigation();engine.reset();if(next){const keepRandom=requestedMode==='random';mode=next;requestedMode=keepRandom?'random':next;rotate=false;dailyWaiting=false;post('modeFallback',{mode:requestedMode,message:'當日上限，自動切換至'+globalThis.DVActivities.names[mode]});}else{dailyWaiting=true;release();post('retry',{message:'目前可用玩法受每日交貨上限或滿背包限制，等待恢復'});}break;}
       case 'interact':if(mode!=='boss'&&s.slider?.visible&&s.fishingOpen){release();level.managers.fishing?.handleInteraction?.();break;}if(mode==='fishing'&&s.atVipBoat)vipBoardingLevel=level;if(mode==='fishing'&&s.atFishing&&fishingInteraction(level))break;if(mode!=='mining'||!miningInteraction(level))interact();break;
       case 'navigateVipFishing':{const vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);if(vip.boat)navigate(level,vip.boat);else retry('VIP 管理員暫時不可用，等待重新搜尋');break;}
       case 'travelFishing':transition(level,'travelFishing',()=>world.services.rpg.teleport('waypoint_fishing'));break;
@@ -278,11 +361,11 @@
       case 'exitFishing':{const manager=level.managers[mode]??level.managers.fishing??level.managers.mining??level.managers.hunting??level.managers.boss;if(manager?.exitToHub)transition(level,'exitActivity',()=>{findResult(world)?.hide?.();manager.exitToHub();});else retry('等待目前地圖的退出操作');break;}
       case 'navigateActivity':{const target=globalThis.DVActivities.target(level,mode,available,pathMap===level?pathTarget:null);if(target&&available(target))navigate(level,target);else{retry('採集目標暫時不可用，等待重新搜尋');}break;}
       case 'combat':combat(level);break;
-      case 'dodge':if(navigationTimer){clearTimeout(navigationTimer);navigationTimer=null;}path=null;routeSearch=null;routeWaypoint=null;routeAxis=null;stuckSince=null;move(action.code);break;
+      case 'dodge':if(navigationTimer){clearTimeout(navigationTimer);navigationTimer=null;}path=null;routeSearch=null;routeWaypoint=null;routeAxis=null;stuckSince=null;move(action.code);if(action.dash===true&&s.bossPhase==='hunting'&&mode==='boss'&&settings.bossGuide&&globalThis.DVDash.attempt(level.managers.entity.player,world.services.gameState,action.code)){globalThis.DVNavigation.resetEscape(level.managers.entity.player);audit('boss:dash',{code:action.code,health:level.managers.entity.player.getCurrentHealth?.()});}break;
       case 'advanceStory':interact();break;
       case 'startBoss':
       case 'startTreasury':clickButton(findPlayButton(world));break;
-      case 'activityResult':{const result=findResult(world);if(result&&!result.isCtaClicked){release();if(mode==='boss'){const choice=globalThis.DVActivities.bossResultAction(result,bossController);if(choice==='return')transition(level,'exitBossResult',()=>{result.hide();level.managers.boss.exitToHub();});else if(choice==='retry')clickButton(result.rightButton);break;}if(requestedMode==='random'&&level.managers[mode]?.exitToHub){transition(level,'exitResult',()=>{result.hide();level.managers[mode].exitToHub();});rotate=true;}else{const b=result.resultType===false||result.result===false?result.rightButton:result.leftButton;clickButton(b);}}break;}
+      case 'activityResult':{const result=findResult(world);if(result&&!result.isCtaClicked){release();if(mode==='boss'){const choice=globalThis.DVActivities.bossResultAction(result,bossController);if(choice==='return')transition(level,'exitBossResult',()=>{result.hide();level.managers.boss.exitToHub();});else if(choice==='retry')clickButton(result.rightButton);break;}if(['random','stockpile'].includes(requestedMode)&&level.managers[mode]?.exitToHub){transition(level,'exitResult',()=>{result.hide();level.managers[mode].exitToHub();});rotate=true;}else{const b=result.resultType===false||result.result===false?result.rightButton:result.leftButton;clickButton(b);}}break;}
       case 'navigateFishing':{
         const allAreas=fishingAreas(level),vip=globalThis.DVActivities.vipFishing(level,world.services,signal(world.services.player.data),available);
         const exclusive=vip.inside?allAreas.filter(e=>String(e.label??'').includes('hvu')):[];
@@ -309,28 +392,30 @@
   setInterval(()=>{
     try{
       if(enabled&&Date.now()<retryAt){release();return;}
-      if(enabled&&requestedMode==='random'&&!bossController.active&&getWorld()?.managers?.level?.currentLevel?.label==='map_hub'&&rotate){
+      if(enabled&&['random','stockpile'].includes(requestedMode)&&!bossController.active&&getWorld()?.managers?.level?.currentLevel?.label==='map_hub'&&rotate){
         const data=signal(getWorld()?.services?.player?.data);
-        const choices=['fishing','mining','hunting'].filter(k=>!dailyRotation.exhausted.has(k)&&data?.activities_data?.[k]?.has_played&&!inventoryState?.[k]?.is_full);
+        const choices=requestedMode==='stockpile'?globalThis.DVSettings.stockpileChoices(settings,data,inventoryState):['fishing','mining','hunting'].filter(k=>!dailyRotation.exhausted.has(k)&&data?.activities_data?.[k]?.has_played&&(!inventoryState?.[k]?.is_full||globalThis.DVActivities.stockPolicy(k,inventoryState[k].items,data.activities_data[k].next_quest,settings.deliveryMultiplier).ready));
         if(choices.length){const alternatives=choices.filter(k=>k!==mode);const pool=alternatives.length?alternatives:choices;mode=pool[Math.floor(Math.random()*pool.length)];rotate=false;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}
       }
+      if(enabled&&dailyWaiting&&requestedMode==='random'&&getWorld()?.managers?.level?.currentLevel?.label==='map_hub'){const data=signal(getWorld()?.services?.player?.data),next=['fishing','mining','hunting'].find(k=>!dailyRotation.exhausted.has(k)&&data?.activities_data?.[k]?.has_played&&inventoryState?.[k]&&(!inventoryState[k].is_full||globalThis.DVActivities.stockPolicy(k,inventoryState[k].items,data.activities_data[k].next_quest,settings.deliveryMultiplier).ready));if(next){mode=next;dailyWaiting=false;rotate=false;deliveryBatchMode=null;clearNavigation();engine.reset();}}
       const currentLevel=getWorld()?.managers?.level?.currentLevel;
       const bossResultReady=currentLevel?.label!=='map_boss'||!!findResult(getWorld());
       const dailyData=signal(getWorld()?.services?.player?.data);const hadDailyLimits=dailyRotation.exhausted.size;dailyRotation.observe(dailyData?.quest_submissions_today);if(hadDailyLimits&&!dailyRotation.exhausted.size)dailyWaiting=false;
       const playerLevel=signal(getWorld()?.services?.player?.data)?.overall_level?.level??0;
       if(enabled&&requestedMode==='boss'&&!bossController.active&&bossController.returnMode&&bossResultReady){requestedMode=bossController.returnMode;mode=requestedMode;post('modeFallback',{mode,message:'Boss 挑戰結束，返回任務模式'});clearNavigation();engine.reset();}
-      if(enabled&&!dailyWaiting&&requestedMode!=='boss'){
+      if(enabled&&!dailyWaiting&&requestedMode!=='boss'&&requestedMode!=='stockpile'){
         if(bossController.active&&!settings.autoBoss)bossController.cancel();
         if(mode==='boss'&&!bossController.active&&bossResultReady){mode=bossController.returnMode??(requestedMode==='random'?'fishing':requestedMode);clearNavigation();engine.reset();}
         if(mode!=='boss'&&currentLevel?.label==='map_hub'&&!deliveryBatchMode&&bossController.enter(playerLevel,settings,mode)){mode='boss';clearNavigation();engine.reset();}
       }
       auditMining(currentLevel);auditDamage(currentLevel?.managers?.entity?.player);
       if(pendingTransition&&(pendingTransition.level!==currentLevel||pendingTransition.label!==currentLevel?.label))pendingTransition=null;
-      if(requestedMode==='random'&&!bossController.active&&currentLevel&&currentLevel.label!=='map_hub'&&!currentLevel.managers?.[mode]){
+      if(['random','stockpile'].includes(requestedMode)&&!bossController.active&&currentLevel&&currentLevel.label!=='map_hub'&&!currentLevel.managers?.[mode]){
         const actualMode=['fishing','mining','hunting'].find(k=>currentLevel.managers?.[k]);
         if(actualMode){mode=actualMode;rotate=false;modeStarted=Date.now();lastItemCount=null;clearNavigation();engine.reset();}
       }
       const s=snapshot();
+      if(requestedMode==='stockpile'){dailyWaiting=false;bossController.cancel();}
       if(inventoryState){const bag=inventoryState[mode];s.itemCount=(bag?.items??[]).reduce((sum,item)=>sum+item.quantity,0);s.bagFull=!!bag?.is_full;
         const data=signal(getWorld()?.services?.player?.data),quest=questState?.[mode]?.quest??data?.activities_data?.[mode]?.next_quest;
         s.stock=globalThis.DVActivities.stockPolicy(mode,bag?.items,quest,settings.deliveryMultiplier);
@@ -338,7 +423,7 @@
         const enoughForCurrent=!!(quest&&quest.quantity>0&&((bag?.items??[]).find(i=>i.name===quest.item)?.quantity??0)>=quest.quantity);
         if(deliveryBatchMode===mode&&!s.submissionOpen&&!enoughForCurrent)deliveryBatchMode=null;
         s.questReady=deliveryBatchMode===mode&&enoughForCurrent;
-        s.canSubmit=s.canSubmit&&deliveryBatchMode===mode;
+        s.canSubmit=s.canSubmit&&deliveryBatchMode===mode;if(requestedMode==='stockpile'){s.questReady=false;s.canSubmit=false;s.masteryMax=false;deliveryBatchMode=null;}
         s.ready=!!(game?.started&&getWorld()?.managers?.level?.currentLevel?.managers.entity.player&&data);
       }
       if(s.connected===false||!s.online){disconnectedAt??=Date.now();clearNavigation();}
@@ -359,11 +444,13 @@
       if(globalThis.DVNavigation.shouldReturnFishing(requestedMode,mode,rotate,s))action={type:'exitFishing',message:'本輪釣魚完成，返回城鎮隨機切換玩法'};
       if(enabled&&mode!=='fishing'&&s.fishingOpen)action=s.slider?.visible?gate:{type:'wait',message:'完成目前釣魚回合後再切換玩法'};
       if(enabled&&now<retryAt)action={type:'wait',message:retryMessage};
-      if(enabled&&['mining','hunting','boss'].includes(mode)&&!(mode==='boss'&&(s.bossComplete||s.bossPhase==='fishing'||s.bossPending))&&s.ready&&s.visible&&s.online&&s.connected!==false&&!s.loading&&!s.otherDialog&&!s.inputFocused&&!s.resultOpen&&!s.slider?.visible){const player=currentLevel.managers.entity.player;const code=globalThis.DVNavigation.dodge(player,mode==='mining'?currentLevel.managers.mining?.mining?.dangers:globalThis.DVNavigation.combatDangers(currentLevel.managers.entity.entities),polygonList(currentLevel));if(code)action={type:'dodge',code,message:mode==='mining'?'避開落石警示與爆炸區':'避開戰鬥範圍攻擊與投射物'};}
-      if(dailyWaiting)action={type:'wait',message:'所有已解鎖採集模式均遇到當日上限，等待計數重置'};
-      if(action.type==='dailyLimit'||dailyWaiting)release();
+      if(enabled&&['mining','hunting','boss'].includes(mode)&&!(mode==='boss'&&(s.bossComplete||s.bossPhase==='fishing'))&&s.ready&&s.visible&&s.online&&s.connected!==false&&!s.loading&&!s.otherDialog&&!s.inputFocused&&!s.resultOpen&&!s.slider?.visible){const player=currentLevel.managers.entity.player;const guide=mode==='boss'&&settings.bossGuide,dangers=mode==='mining'?currentLevel.managers.mining?.mining?.dangers:guide?globalThis.DVNavigation.bossGuideDangers(currentLevel.managers.entity.entities,player):globalThis.DVNavigation.combatDangers(currentLevel.managers.entity.entities);const nearbyWarning=guide&&(dangers??[]).some(d=>d.warning&&d.body&&player.body.x<d.body.x+d.body.width+16&&player.body.x+player.body.width>d.body.x-16&&player.body.y<d.body.y+d.body.height+16&&player.body.y+player.body.height>d.body.y-16);const code=globalThis.DVNavigation.dodge(player,dangers,polygonList(currentLevel),nearbyWarning?'ArrowDown':null,guide,guide?(bossStands.get(globalThis.DVActivities.target(currentLevel,mode))??globalThis.DVNavigation.bossAnchor(player,globalThis.DVActivities.target(currentLevel,mode),currentLevel.managers.entity.entities)):null);if(code)action={type:'dodge',code,dash:!!nearbyWarning,message:mode==='mining'?'避開落石警示與爆炸區':'避開戰鬥範圍攻擊與投射物'};}
+      if(enabled&&requestedMode==='stockpile'&&s.ready&&s.online&&s.visible&&!s.loading&&!s.otherDialog){if(s.submissionOpen)action={type:'closeSubmission',message:'只採集模式，關閉交貨介面'};else if(s.bagFull||!settings.stockpileModes.includes(mode)){if(!s.inHub)action=s.fishingOpen?{type:'wait',message:'完成目前釣魚回合後切換採集'}:{type:'exitFishing',message:'本項已滿或已取消，返回城鎮切換採集'};else{const next=globalThis.DVSettings.stockpileChoices(settings,signal(getWorld()?.services?.player?.data),inventoryState).find(k=>k!==mode);if(next){mode=next;engine.reset();clearNavigation();action={type:'wait',message:'切換至'+globalThis.DVActivities.names[next]+'繼續採集'};}else action={type:'wait',message:settings.stockpileModes.length?'勾選項目已滿或尚未解鎖，等待可用空間':'未勾選採集項目，等待設定'};}}}
+      if(dailyWaiting)action={type:'wait',message:'目前可用玩法受每日交貨上限或滿背包限制，等待恢復'};
+      const exchange=balanceAction(s,now);if(exchange)action=exchange;
+      if(!exchange&&(action.type==='dailyLimit'||dailyWaiting))release();
       execute(action,s);errorCount=0;
-      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{active:bossController.active,failures:bossController.failures,blocked:bossController.blocked},hooked:!!game,diagnostics:{action:action.type,mode,vip:s.vip,boatCandidates:(level?.managers?.entity?.entities??[]).filter(e=>/boat|hvu/i.test(String(e.name??'')+' '+String(e.label??''))).map(e=>({name:e.name,label:e.label,enabled:e.enabled,destroyed:e.destroyed,canInteract:e.canInteract,locked:e.isLocked?.(),body:e.body,properties:e.properties?.get?.()})),health:player?.getCurrentHealth?.(),audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
+      if(Date.now()-lastStatus>300){lastStatus=Date.now();const level=getWorld()?.managers?.level?.currentLevel,match=deliveryTarget(level),target=action.type==='navigateDelivery'?match?.entity:(level?.managers?.entity?.entities??[]).find(e=>targetKey(e)===pathTarget)??(mode==='fishing'?fishingAreas(level)[0]:globalThis.DVActivities.target(level,mode)),player=level?.managers?.entity?.player;post('status',{moduleReady,status:action.message,enabled,mode,map:s.map,level:s.level,diamonds:s.diamonds,itemCount:s.itemCount,stock:s.stock,bossState:{...bossController.progress(),attackLevel:signal(getWorld()?.services?.player?.data)?.activities_data?.hunting?.level,healthLevel:signal(getWorld()?.services?.player?.data)?.activities_data?.mining?.level},hooked:!!game,diagnostics:{exchangeCandidates:['fishing','mining','hunting'].map(k=>({mode:k,exhausted:dailyRotation.exhausted.has(k),quest:signal(getWorld()?.services?.player?.data)?.activities_data?.[k]?.next_quest,items:inventoryState?.[k]?.items,plan:globalThis.DVExchange.plan(k,inventoryState?.[k]?.items,signal(getWorld()?.services?.player?.data)?.activities_data?.[k]?.next_quest,settings.deliveryMultiplier,(getWorld()?.uiManager?.exchangeDialog??getWorld()?.managers?.uiManager?.exchangeDialog)?.itemExchangeConfig)})),exchangeNpcs:(level?.managers?.entity?.entities??[]).filter(e=>props(e).some(p=>p.value==='ui_exchange')).map(e=>({name:e.name,enabled:e.enabled,locked:e.isLocked?.(),body:e.body})),exchange:balanceSession?{mode:balanceSession.mode,pending:!!balanceSession.pending,operations:balanceSession.operations}:null,action:action.type,mode,vip:s.vip,boatCandidates:(level?.managers?.entity?.entities??[]).filter(e=>/boat|hvu/i.test(String(e.name??'')+' '+String(e.label??''))).map(e=>({name:e.name,label:e.label,enabled:e.enabled,destroyed:e.destroyed,canInteract:e.canInteract,locked:e.isLocked?.(),body:e.body,properties:e.properties?.get?.()})),health:player?.getCurrentHealth?.(),boss:mode==='boss'?{returnStance:bossStands.get(globalThis.DVActivities.target(level,mode))??null,slider:s.slider,dash:{enabled:subject(getWorld()?.services?.gameState?.dashEnabled$),ready:subject(getWorld()?.services?.gameState?.canDash$),active:player?.isDashing,cooldown:subject(getWorld()?.services?.ui?.dashCooldownState$)},phase:level?.managers?.boss?.boss?.currentActivity,pending:signal(level?.managers?.boss?.pendingUpdates),health:level?.managers?.boss?.boss?.boss?.getHealth?.(),playerBody:player?.body,weaponBodies:player?.weaponBodies,weapons:Object.values(player?.weapons??{}).map(w=>({name:w.weapon?.name})),dangers:globalThis.DVNavigation.combatDangers(level?.managers?.entity?.entities),pillars:(level?.managers?.entity?.entities??[]).filter(e=>/pillar|column|柱/i.test(String(e.name??'')+' '+String(e.label??''))).map(e=>({name:e.name,label:e.label,body:e.body}))}:null,audit:[...auditEvents],position:player?.body?feet(player):null,target:target?{name:target.name,id:target.id,body:target.body}:null,nextPoint:path?.[0],waypoints:path?.length??0,planning:!!routeSearch,observedStep,routeAxis,rotate,transition:pendingTransition?.action??null,npcMatch:match?{name:match.entity.name,method:match.method,score:match.score}:null,held:[...held],collided:player?.collidedObj?.name,contacts:[...(player?.collidedEntities?.arriving?.values?.()??[]),...(player?.collidedEntities?.staying?.values?.()??[])].map(e=>e.name??e.label),targetPolygon:interactionPolygon(target),submissionOpen:s.submissionOpen,canSubmit:s.canSubmit,submitting:s.submitting,questReady:s.questReady,stock:s.stock,deliveryBatch:deliveryBatchMode===mode,loading:s.loading}});}
     }catch(error){release();clearNavigation();hookError=`遊戲狀態暫時不相容：${error.message}`;if(enabled&&Date.now()>=retryAt){errorCount++;retryAt=Date.now()+3000;retryMessage=hookError;post('retry',{message:hookError,diagnostics:{error:error.message,stack:error.stack}});if(errorCount>=3&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();post('recover',{reason:hookError});}}}
 
   },30);

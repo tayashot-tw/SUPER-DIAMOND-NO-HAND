@@ -60,6 +60,8 @@ async function mainIntegration(){
   vm.runInContext(fs.readFileSync(__dirname+'/planner.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/activities.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/navigation.js','utf8'),context);
+  vm.runInContext(fs.readFileSync(__dirname+'/exchange.js','utf8'),context);
+  vm.runInContext(fs.readFileSync(__dirname+'/dash.js','utf8'),context);
   const adapter=fs.readFileSync(__dirname+'/main.js','utf8').replace('await import(new URL(`../${VERSION}`,location.href).href)','await Promise.resolve({Game:FakeGame})').replace('  hook();','  globalThis.testExecute=execute;globalThis.testSnapshot=snapshot;globalThis.testPolygons=polygonList;globalThis.testNavigation={feet,navigationGoal,navigate,fishingAreas,transition,navigationGoals,miningInteraction,fishingInteraction,hasContact,auditDamage};hook();');
   vm.runInContext(adapter,context);await new Promise(resolve=>setImmediate(resolve));
   assert.doesNotThrow(()=>context.testSnapshot(),'cold start before Game init must not throw');interval();
@@ -82,6 +84,7 @@ async function mainIntegration(){
   assert.ok(findPath({x:18,y:0},{x:18,y:96},narrowBridge,{x:16,y:6},6),'native feet and fine grid must traverse a 36px passage');
   const tinyNpc={label:'npc_hvu_boat',body:{x:96,y:0,width:50,height:86},collider:{shape:{points:[0,0,1,0,1,1,0,1]}}};
   assert.ok(context.testNavigation.navigationGoals(tinyNpc,nativePlayer).length>0,'NPC shape must not erase all collision-checked approach candidates');
+  const standGoals=context.testNavigation.navigationGoals({standGoal:{x:1099,y:757}},nativePlayer);assert.equal(standGoals.length,7);assert.ok(standGoals.every(g=>Math.abs(g.x-1099)<=6&&Math.abs(g.y-757)<=6),'Boss return candidates stay within attack anchor tolerance');
   const damagePlayer={hp:55,getCurrentHealth(){return this.hp;},onShot(source,amount){this.hp-=amount;return source.name;}};
   context.testNavigation.auditDamage(damagePlayer);context.testNavigation.auditDamage(damagePlayer);
   assert.equal(damagePlayer.onShot({name:'monster_test'},7),'monster_test');
@@ -198,6 +201,20 @@ async function mainIntegration(){
   level.managers.fishing={canPlayMinigame:()=>true,fishing:{isOpen$:{value:true}}};assert.equal(context.testSnapshot().canPlay,false,'server-ready must not interrupt the native rod animation');level.managers.fishing.fishing.isOpen$.value=false;assert.equal(context.testSnapshot().canPlay,true);
 
   player.collidedEntities.staying.clear();now=109300;assert.equal(context.testNavigation.miningInteraction(level),false);
+  delete level.managers.fishing;level.label='map_boss';player.inBattle=true;
+  let nativeIncoming=0;player.hp=55;player.getCurrentHealth=()=>player.hp;
+  level.managers.boss={pendingUpdates:{value:1},playerHitByProjectile(){nativeIncoming++;},boss:{currentActivity:'hunting',updatePlayerHealth(value){player.hp=value;}},hasComplete:false};
+  listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'boss'}});
+  const originalDodge=context.DVNavigation.dodge;context.DVNavigation.dodge=()=> 'ArrowDown';const beforePendingDodge=keys.length;now=111000;interval();
+  assert.ok(keys.slice(beforePendingDodge).some(e=>e.type==='keydown'&&e.code==='ArrowDown'),'server update pending must not freeze emergency Boss dodge');
+  level.managers.boss.boss.currentActivity='fishing';const beforeFishingDodge=keys.length;now=112000;interval();
+  assert.equal(keys.slice(beforeFishingDodge).some(e=>e.type==='keydown'&&e.code==='ArrowDown'),false,'fishing phase must still suppress dodge movement');context.DVNavigation.dodge=originalDodge;
+  level.managers.boss.playerHitByProjectile();level.managers.boss.boss.updatePlayerHealth(50);assert.equal(nativeIncoming,1,'diagnostic hook preserves native collision handler');assert.equal(player.hp,50);assert.ok(messages.some(m=>m.type==='bossTrace'&&m.trace.event==='boss:playerHitByProjectile'));assert.ok(messages.some(m=>m.type==='bossTrace'&&m.trace.event==='boss:healthDrop'&&m.trace.amount===5));
+  let nativeDashCalls=0;player.dash=vector=>{nativeDashCalls++;assert.equal(vector.y,1);};services.gameState.canDash$={value:true};services.gameState.dashEnabled$={value:true};level.managers.boss.boss.currentActivity='hunting';listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'boss',settings:{bossGuide:true}}});context.testExecute({type:'dodge',code:'ArrowDown'},{});assert.equal(nativeDashCalls,0,'short emergency escape must not invoke an unbounded native dash');services.gameState.canDash$.value=false;context.testExecute({type:'dodge',code:'ArrowDown'},{});assert.equal(nativeDashCalls,0,'native dash remains unused for short escape');level.managers.boss.boss.currentActivity='fishing';services.gameState.canDash$.value=true;context.testExecute({type:'dodge',code:'ArrowDown'},{});assert.equal(nativeDashCalls,0,'fishing phase must not dash');level.managers.boss.boss.currentActivity='hunting';context.testExecute({type:'dodge',code:'ArrowDown',dash:true},{bossPhase:'hunting'});assert.equal(nativeDashCalls,1,'explicit imminent warning may use ready native dash');
+  services.ui.hideQuestSubmissionDialog=()=>{};data.activities_data.mining={has_played:true};data.activities_data.hunting={has_played:true};listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'random',settings:{autoBoss:false}}});context.testExecute({type:'dailyLimit'},{});assert.equal(messages.filter(m=>m.type==='modeFallback').at(-1).mode,'random','daily-cap fallback must preserve requested random rotation');listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'fishing',settings:{autoBoss:false}}});context.testExecute({type:'dailyLimit'},{});assert.equal(messages.filter(m=>m.type==='modeFallback').at(-1).mode,'mining','manual mode daily-cap fallback still selects another activity');
+  level.label='map_hub';listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'panel',type:'config',enabled:true,mode:'stockpile',settings:{autoBoss:true}}});now=130000;interval();const stockStatus=messages.filter(m=>m.type==='status').at(-1);assert.ok(['fishing','mining','hunting'].includes(stockStatus.mode),'stockpile only selects mining or hunting');assert.equal(stockStatus.diagnostics.questReady,false,'stockpile must suppress deliveries');assert.equal(stockStatus.diagnostics.canSubmit,false,'stockpile must not submit');
+
+
 
 
 
@@ -213,6 +230,8 @@ async function panelTests(){
   context.window={postMessage(){},addEventListener:(type,cb)=>listeners[type]=cb};
   vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/settings.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/panel.js','utf8'),context);await new Promise(resolve=>setImmediate(resolve));
+  interval();assert.equal(clicks,0,'landing must wait for the game-module handshake');
+  listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'bot',type:'hook',ready:true}});
   interval();assert.equal(clicks,1);
   listeners.message({source:context.window,origin:context.location.origin,data:{channel:'diamond-valley-autoplay-v2',source:'bot',type:'retry',message:'重新搜尋'}});
   assert.equal(nodes.start.disabled,true,'retry keeps enabled state');
@@ -221,6 +240,7 @@ async function panelTests(){
   message({type:'halt',message:'背包已滿'});message({type:'status',status:'已停止'});
   assert.equal(nodes.status.textContent,'背包已滿','keep the actual stopping reason');
   now+=6000;interval();assert.equal(clicks,1,'stopped bot must not restart the game');
+  nodes.challengeBoss.onclick();assert.equal(nodes.bossGuide.checked,true);assert.equal(nodes.start.disabled,true);
   context.chrome.storage.local.set=()=>{throw new Error('Extension context invalidated.');};
   assert.doesNotThrow(()=>nodes.start.onclick(),'extension reload must not throw from the old panel');
   assert.equal(nodes.status.textContent,'擴充套件已更新，請重新整理遊戲頁');

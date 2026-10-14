@@ -12,3 +12,4 @@ for browser in ['edge','chrome']:
         archive.writestr('manifest.json',json.dumps(config,ensure_ascii=False,indent=2))
         for path in sorted(source.glob('*.js')):archive.write(path,path.name)
         archive.write(root/'README.md','README.md')
+        if (root/'BOSS_GUIDE.md').exists():archive.write(root/'BOSS_GUIDE.md','BOSS_GUIDE.md')

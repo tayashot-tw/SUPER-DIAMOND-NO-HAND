@@ -97,3 +97,49 @@ assert.equal(dodge(cornerPlayer,[cornerThreat],cornerWalls),'ArrowRight','retain
 console.log('PASS: wall-corner escape and retained turning route');
 
 assert.equal(globalThis.DVNavigation.shouldReturnFishing('random','fishing',true,{...readyRotation,fishingOpen:true,slider:{visible:false}}),false,'hidden slider must not permit exiting an unfinished native fishing round');
+
+const bp={body:{x:260,y:30,width:32,height:64},scale:{x:1}},bt={body:{x:200,y:0,width:64,height:96}};
+assert.equal(DVNavigation.bossDirection(bp,bt,[],[]),'ArrowDown','right-side player crosses below boss');
+bp.body.x=260;bp.body.y=140;assert.equal(DVNavigation.bossDirection(bp,bt,[],[]),'ArrowLeft');
+bp.body.x=132;bp.body.y=140;assert.equal(DVNavigation.bossDirection(bp,bt,[],[]),'ArrowUp','return to left attack anchor');
+const bossWarning={body:{x:-30,y:-30,width:80,height:80},canCollide:true};
+const dodgePlayer={body:{x:0,y:0,width:16,height:16}};
+assert.equal(DVNavigation.dodge(dodgePlayer,[bossWarning],[],'ArrowDown'),'ArrowDown','prefer downward safe escape');
+assert.equal(DVNavigation.dodge({body:{x:300,y:300,width:16,height:16}},[bossWarning],[],'ArrowDown'),null,'no bossWarning means no forced dodge');
+console.log('PASS: Boss left anchor, cross below boss, return after dodge and safe downward preference');
+
+const giantBoss={body:{x:1151,y:308,width:510,height:455}};
+assert.equal(DVNavigation.bossDirection({body:{x:1083,y:651,width:32,height:64},scale:{x:1}},giantBoss,[],[]),null,'stand at upper-left attack shelf instead of chasing giant sprite center');
+assert.equal(DVNavigation.bossDirection({body:{x:1083,y:652,width:32,height:64},scale:{x:1}},giantBoss,[],[]),null,'upper-left shelf is reached without continuing upward');
+const bossWarningEntity={body:{x:0,y:0,width:100,height:100},enabled:false,canCollide:false,bombIndicator:{parent:{},visible:true},outerBombColliders:[{body:{x:100,y:0,width:80,height:80}}]};
+assert.equal(DVNavigation.combatDangers([bossWarningEntity]).length,2,'read visible native bomb warning and outer explosion colliders before damage');
+bossWarningEntity.bombIndicator.parent=null;assert.equal(DVNavigation.combatDangers([bossWarningEntity]).length,0,'removed warning must not create ghost danger');
+console.log('PASS: observed giant Boss lower anchor and pre-damage native warning');
+
+assert.equal(DVNavigation.combatDangers([{name:'boss_123',isEnemy:true,canCollide:true,body:{x:0,y:0,width:500,height:400}}]).length,0,'Boss physical body is an attack target, not a projectile warning');
+assert.equal(DVNavigation.combatDangers([{name:'boss_projectile_123',isEnemy:true,canCollide:true,body:{x:0,y:0,width:50,height:40}}]).length,1,'Boss projectiles remain hazards');
+
+const compactPlayer={body:{x:0,y:0,width:16,height:16}},smallDanger={body:{x:0,y:0,width:8,height:8},canCollide:true};
+DVNavigation.dodge(compactPlayer,[smallDanger],[],null,true);compactPlayer.body.x=32;assert.equal(DVNavigation.dodge(compactPlayer,[smallDanger],[],null,true),null,'compact dodge must finish once outside padded danger instead of continuing a 96px retreat');
+
+assert.deepEqual(DVNavigation.bossAnchor({body:{x:0,y:0,width:32,height:64}}, {body:{x:1151,y:308,width:510,height:455}},[]),{x:1083,y:651});
+
+assert.ok(DVNavigation.dodge({body:{x:0,y:0,width:32,height:64}},[{body:{x:0,y:0,width:32,height:12},canCollide:true}],[],null,true),'native enemy hits test full collision rectangle even when wall routing uses feet');
+assert.ok(DVNavigation.dodge({body:{x:0,y:0,width:32,height:64}},[{body:{x:0,y:52,width:32,height:12},canCollide:true}],[],null,true),'actual foot-level danger still causes avoidance');
+
+const lineWarning={body:{x:0,y:52,width:96,height:256},enabled:false,canCollide:false,lineIndicator:{parent:{},visible:true}};assert.equal(DVNavigation.combatDangers([lineWarning]).length,1,'line pre-damage indicator is a hazard');assert.equal(DVNavigation.bossAnchorBlocked({x:0,y:0},{body:{width:32,height:64}},DVNavigation.combatDangers([lineWarning])),true,'do not return into an active warning');lineWarning.lineIndicator.parent=null;assert.equal(DVNavigation.bossAnchorBlocked({x:0,y:0},{body:{width:32,height:64}},DVNavigation.combatDangers([lineWarning])),false,'resume when native warning disappears');
+
+const tacticalEntities=[{name:'boss_projectile_11',isEnemy:true,canCollide:true,body:{x:0,y:0,width:20,height:20}},{name:'homing_12',body:{x:0,y:0,width:150,height:150},homingIndicator:{parent:{},visible:true}}];assert.equal(DVNavigation.combatDangers(tacticalEntities).length,2);assert.equal(DVNavigation.bossGuideDangers(tacticalEntities).length,2,'all native projectile bodies remain visible to escape planning');
+
+assert.equal(DVNavigation.bossGuideDangers(tacticalEntities,{body:{x:0,y:0,width:32,height:64}}).length,2,'immediate Boss projectile must be dodged instead of ignored');assert.equal(DVNavigation.dodge({body:{x:800,y:800,width:32,height:64}},DVNavigation.bossGuideDangers(tacticalEntities),[],null,true),null,'distant projectile must not trigger escape even when included in destination planning');
+
+const movingProjectile={name:'boss_projectile_22',isEnemy:true,canCollide:true,dx:20,dy:0,body:{x:100,y:100,width:40,height:30}};
+const predicted=DVNavigation.bossGuideDangers([movingProjectile])[0].body;assert.equal(predicted.width,88,'bounded four-frame prediction includes approaching projectile');
+
+assert.equal(DVNavigation.dodge({body:{x:0,y:0,width:16,height:16}},[{body:{x:0,y:0,width:8,height:8},canCollide:true}],[],null,true,{x:100,y:0}),'ArrowRight','equally safe escape should prefer a short direction toward attack stance');
+
+{const p={body:{x:900,y:700,width:32,height:64},scale:{x:1}},b={body:{x:1000,y:300,width:510,height:455}};const chosen={x:900,y:700};assert.equal(globalThis.DVNavigation.bossDirection(p,b,[],[],chosen),null,'reachable return stance must remain stable rather than chase original blocked anchor');}console.log('PASS: retained reachable Boss stance');
+
+{const p={body:{x:0,y:0,width:32,height:64}},b={body:{x:1000,y:300,width:510,height:455}};assert.equal(DVNavigation.validBossStance({x:932,y:650},p,b),true);assert.equal(DVNavigation.validBossStance({x:870,y:650},p,b),false,'drifting anchor beyond native reach rejected');assert.equal(DVNavigation.validBossStance({x:980,y:650},p,b),false,'inside Boss rejected');assert.equal(DVNavigation.validBossStance({x:932,y:800},p,b),false,'vertical attack miss rejected');DVNavigation.resetEscape(p);}console.log('PASS: Boss stance validates native attack reach and overlap');
+
+{const wall=[[{x:1600,y:576},{x:1728,y:576},{x:1728,y:640},{x:1600,y:640}]],near={x:1680,y:646,halfX:16,halfY:6};assert.equal(DVNavigation.routeSegmentClear(near,{x:1650,y:646},wall),false,'do not cut a wall edge by skipping alignment waypoint');assert.equal(DVNavigation.routeSegmentClear({...near,y:650},{x:1650,y:650},wall),true,'aligned safe leg remains usable');}console.log('PASS: real Boss wall-edge waypoint skip regression');
