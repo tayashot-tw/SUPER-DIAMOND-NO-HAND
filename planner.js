@@ -128,7 +128,6 @@
         return {type:'wait',message:'等待 VIP 登船對話'};
       }
       if(s.otherDialog)return {type:'wait',message:'等待其他介面關閉'};
-      if(s.masteryMax&&!s.questReady)return {type:'halt',message:'釣魚熟練度已達上限；本版自動釣魚完成'};
       if(s.bagFull&&!s.questReady)return {type:'halt',message:'背包已滿，尚未達交貨倍數門檻；等待背包可用'};
       if(now-this.lastAction<350)return {type:'wait',message:'等待前一步操作生效'};
       if(s.questReady||s.bagFull){

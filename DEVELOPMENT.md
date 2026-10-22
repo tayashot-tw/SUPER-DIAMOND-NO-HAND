@@ -245,3 +245,21 @@ User requests three-mode rotation running/stall check. Set autoBoss false via pa
 
 
 0.4.54：改名「輪替採集到背包滿（不交貨）」。自動遊玩設定可勾選釣魚、挖礦、打怪，預設三項全選，設定會儲存；空選擇保留為空並等待。只採集模式跳過滿背包及未解鎖項目，不交貨、不交換、不打王；全部勾選項目滿後保持啟用等待。已取消的玩法在完成目前釣魚回合後退出切換；其他模式行為保留。
+
+0.4.55 hunting.js：原生projectileWeaponShoot旁路記錄新增monster_yellow_projectile實體的WeakMap來源，保留原函式參數/this/回傳。既有球反推射線，歧義不追；24原生移動tick預測，側移避讓後原生combatDirection接近來源。只作用hunting，不更改Boss／採集設定。測試見hunting.test.cjs，實戰未驗證。
+
+
+## 0.4.56 額外鑽石任務清單
+
+面板新增「額外鑽石任務」，讀取官方subQuests$、每日登入天數及智慧之井狀態；按「開啟官方任務清單」使用原生ui.showQuest(quest,true)檢查其他進度。這是任務追蹤與官方入口，不是全自動完成支線或領獎；NPC、問卷、戰隊加入、邀請及點數兌換仍需手動確認。不猜測鑽石獎勵或宣稱已領取。缺資料時顯示待確認。
+
+來源：[官方FAQ](https://diamondvalley.withgoogle.com/intl/ALL_tw/faq/)、[2026攻略](https://kheresy.wordpress.com/2026/09/28/2026-google-play-diamond-valley/)。目前已確認今年任務UI包含每日登入、支線、戰隊、智慧之井、街頭活動及寶庫；實際資格依官方啟用與帳號狀態，尚待實機驗證。原生UI來源chunk-4WSXWEAM.js的Ga元件。測試：node missions.test.cjs。
+
+
+## 0.4.57 自動普通對話支線
+
+下拉選「額外鑽石任務（一般對話自動）」後按開始。在城鎮依官方subQuests$的todo/ongoing任務與NPC game_part、quest_slug或精確cutscene檔名對應，尋路互動並繼續無選項的一般對話。只有官方status=complete才確認完成；未知對應不亂找NPC，選項不自選，逾60秒冷卻重試。Boss、寶庫、智慧之井、登入、邀請、戰隊、問卷、贊助及付費兌換不在本次自動對話範圍，保留原有入口/模式。獎勵由官方結算，不直接請求領獎API或修改進度。NPC欄位未對應時會等待，不代表任務已全完成。尚待登入後實機驗證。
+
+0.4.58 實機根因：Pixi顯示城鎮且官方HUD100/550，套件game=null/audit空；console載入game-RDZLHNOS.js，舊程式只攔截KRZLVEFN/74YGLLZX/6NMIDNT2。加入RDZLHNOS與modules.js只讀原生ResourceTiming/DOM標籤發現入口，精確同源同ALL_tw目錄及game-[hash].js，拒絕game_interactive與其他來源。初始化前包裝原生init，呼叫原函式保持this/args/return。已嘗試模組去重，未連接時750ms重新發現；無須遠端執行擴充套件更新。面板診斷moduleConnection列出hooked及attached。新版本需重載後驗證。
+
+0.4.59：移除planner masteryMax halt、ActivityPlanner masteryMax early return，釣魚等待復原監測不再排除滿熟練度。masteryMax仍可顯示官方狀態，不用來停止採集。mastery.test.cjs覆蓋三項滿熟練度續跑、交貨、官方每日上限和滿背包政策。待重新載入實測。

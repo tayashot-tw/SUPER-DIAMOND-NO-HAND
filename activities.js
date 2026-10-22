@@ -1,5 +1,5 @@
 (() => {
-  const names={fishing:'釣魚',mining:'挖礦',hunting:'打怪',boss:'Boss',treasury:'寶庫',riddle:'解謎'};
+  const names={missions:'額外鑽石任務',fishing:'釣魚',mining:'挖礦',hunting:'打怪',boss:'Boss',treasury:'寶庫',riddle:'解謎'};
   const center=e=>e?.body&&({x:e.body.x+e.body.width/2,y:e.body.y+e.body.height/2});
   const near=(p,entities)=>entities.filter(e=>center(e)).sort((a,b)=>Math.hypot(center(a).x-p.x,center(a).y-p.y)-Math.hypot(center(b).x-p.x,center(b).y-p.y))[0];
   const active=e=>!!e&&!e.destroyed&&e.enabled!==false&&e.canInteract===true&&!e.isLocked?.();
@@ -73,7 +73,7 @@
       if(s.resultOpen){if(now-this.lastAction<1800)return {type:'wait',message:'等待結果畫面'};this.lastAction=now;return {type:'activityResult',message:'關閉本輪結果，準備下一輪'};}
       if(s.loading||s.otherDialog)return null;
       if(s.mode==='boss'&&s.slider?.visible)return null;
-      if(s.questReady||s.bagFull||s.masteryMax)return null;
+      if(s.questReady||s.bagFull)return null;
       if(s.inHub&&s.mode==='boss')return {type:s.targetCollided?'interact':'navigateActivity',message:'前往已解鎖的 Boss 入口'};
       if(s.inHub&&['mining','hunting'].includes(s.mode)){
         if(!s.activityUnlocked)return {type:'halt',message:`請先完成${names[s.mode]}教學，再啟動自動遊玩`};

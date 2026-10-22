@@ -1,6 +1,6 @@
 # SUPER DIAMOND NO HAND
 
-使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.54**。
+使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.59**。
 
 ## 0.4.54 採集到滿模式
 
@@ -16,8 +16,8 @@ Edge 實測：釣魚 500 已滿被跳過，礦石 285→318 結算成功，接�
 
 ## 下載與安裝
 
-- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.54.zip)
-- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.54.zip)
+- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.59.zip)
+- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.59.zip)
 
 這是供使用者自行載入的未封裝來源 ZIP，**並非瀏覽器商店上架或已簽章 CRX**。GitHub ZIP 頁面按下載圖示或 Download raw file，再解壓縮到固定資料夾。
 
@@ -28,7 +28,7 @@ Edge 實測：釣魚 500 已滿被跳過，礦石 285→318 結算成功，接�
 3. 按「載入解壓縮」，選擇解壓縮後包含 `manifest.json` 的資料夾。
 4. 停用舊版 Diamond Valley 套件，避免重複執行。
 5. 在 Edge 開啟 [台灣版遊戲](https://diamondvalley.withgoogle.com/intl/ALL_tw/game/)，登入並完成對應玩法教學。
-6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.54」。
+6. 重新整理遊戲，確認左下角顯示「自動遊玩 0.4.59」。
 
 ### Chrome
 
@@ -82,6 +82,13 @@ node navigation.test.cjs
 node activities.test.cjs
 node settings.test.cjs
 node updates.test.cjs
+node exchange.test.cjs
+node dash.test.cjs
+node slider.test.cjs
+node hunting.test.cjs
+node missions.test.cjs
+node modules.test.cjs
+node mastery.test.cjs
 python build.py
 ```
 
@@ -186,3 +193,30 @@ python build.py
 
 
 0.4.54：改名「輪替採集到背包滿（不交貨）」。自動遊玩設定可勾選釣魚、挖礦、打怪，預設三項全選，設定會儲存；空選擇保留為空並等待。只採集模式跳過滿背包及未解鎖項目，不交貨、不交換、不打王；全部勾選項目滿後保持啟用等待。已取消的玩法在完成目前釣魚回合後退出切換；其他模式行為保留。
+
+
+### 0.4.55 黃色小球避讓與來源追擊
+
+打怪時依官方黃色投射物名稱及移動向量預判接近彈道；先向側面避開，再優先接近發射史萊姆，沿用遊戲原生自動攻擊。原生發射時記錄來源；既有小球只在反推來源唯一時追擊，不確定則保留一般打怪。來源死亡、離開本輪或3秒未更新即清除。牆壁及危險區仍限制走位，不會迎面穿過小球；尚待Edge實測。
+
+
+## 0.4.56 額外鑽石任務清單
+
+面板新增「額外鑽石任務」，讀取官方subQuests$、每日登入天數及智慧之井狀態；按「開啟官方任務清單」使用原生ui.showQuest(quest,true)檢查其他進度。這是任務追蹤與官方入口，不是全自動完成支線或領獎；NPC、問卷、戰隊加入、邀請及點數兌換仍需手動確認。不猜測鑽石獎勵或宣稱已領取。缺資料時顯示待確認。
+
+來源：[官方FAQ](https://diamondvalley.withgoogle.com/intl/ALL_tw/faq/)、[2026攻略](https://kheresy.wordpress.com/2026/09/28/2026-google-play-diamond-valley/)。目前已確認今年任務UI包含每日登入、支線、戰隊、智慧之井、街頭活動及寶庫；實際資格依官方啟用與帳號狀態，尚待實機驗證。原生UI來源chunk-4WSXWEAM.js的Ga元件。測試：node missions.test.cjs。
+
+
+## 0.4.57 自動普通對話支線
+
+下拉選「額外鑽石任務（一般對話自動）」後按開始。在城鎮依官方subQuests$的todo/ongoing任務與NPC game_part、quest_slug或精確cutscene檔名對應，尋路互動並繼續無選項的一般對話。只有官方status=complete才確認完成；未知對應不亂找NPC，選項不自選，逾60秒冷卻重試。Boss、寶庫、智慧之井、登入、邀請、戰隊、問卷、贊助及付費兌換不在本次自動對話範圍，保留原有入口/模式。獎勵由官方結算，不直接請求領獎API或修改進度。NPC欄位未對應時會等待，不代表任務已全完成。尚待登入後實機驗證。
+
+
+## 0.4.58 官方主程式更新相容修正
+
+修正官方2026-10-22改用game-RDZLHNOS.js後，地圖已顯示但面板仍等待連接的問題。補上新版入口，並從已載入的同源／同台灣版目錄資源與script/link標籤偵測game雜湊檔名；等待初始化期間每750毫秒檢查新入口，不重複匯入已嘗試模組。更新後需重新載入套件及重新整理遊戲才能攔截原生Game.init。測試通過，新入口實機待重新載入驗證。
+
+
+## 0.4.59 滿熟練度持續任務
+
+釣魚、採礦、打怪的熟練度滿後仍繼續所選玩法、交貨與輪替，不再以熟練度滿作為停止條件。只採集模式仍依勾選項目採集到背包滿；一般模式保留交貨倍數及每日上限切換/等待。官方不能再開始回合或無獎勵時，不修改限制或保證收益。

@@ -62,6 +62,9 @@ async function mainIntegration(){
   vm.runInContext(fs.readFileSync(__dirname+'/navigation.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/exchange.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/dash.js','utf8'),context);
+  vm.runInContext(fs.readFileSync(__dirname+'/hunting.js','utf8'),context);
+  vm.runInContext(fs.readFileSync(__dirname+'/missions.js','utf8'),context);
+  vm.runInContext(fs.readFileSync(__dirname+'/modules.js','utf8'),context);
   const adapter=fs.readFileSync(__dirname+'/main.js','utf8').replace('await import(new URL(`../${VERSION}`,location.href).href)','await Promise.resolve({Game:FakeGame})').replace('  hook();','  globalThis.testExecute=execute;globalThis.testSnapshot=snapshot;globalThis.testPolygons=polygonList;globalThis.testNavigation={feet,navigationGoal,navigate,fishingAreas,transition,navigationGoals,miningInteraction,fishingInteraction,hasContact,auditDamage};hook();');
   vm.runInContext(adapter,context);await new Promise(resolve=>setImmediate(resolve));
   assert.doesNotThrow(()=>context.testSnapshot(),'cold start before Game init must not throw');interval();
