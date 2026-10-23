@@ -33,7 +33,7 @@
   });
   const selector=document.createElement('select');selector.id='mode';selector.innerHTML='<option value="daily">日常任務：三項交貨＋對話支線</option><option value="missions">額外鑽石任務（一般對話自動）</option><option value="fishing">釣魚</option><option value="stockpile">輪替採集到背包滿（不交貨）</option><option value="mining">挖礦（待實測）</option><option value="hunting">打怪（待實測）</option><option value="boss">挑戰 BOSS（測試）</option><option value="treasury">寶庫（開發測試）</option><option value="riddle">解謎（尚未完成）</option>';
   selector.innerHTML='<option value="random">隨機轮替：釣魚／挖礦／打怪</option>'+selector.innerHTML.replace('解謎（尚未完成）','解謎（官方停用）');
-  const title=root.querySelector?.('h3');if(title)title.textContent='自動遊玩 0.4.61';
+  const title=root.querySelector?.('h3');if(title)title.textContent='自動遊玩 0.4.62';
   root.querySelector?.('section')?.insertBefore(selector,$('status'));
   $('challengeBoss').onclick=()=>{if(!loaded)return;bossProgress=null;lastBossProgress='';window.postMessage({channel,source:'panel',type:'bossReset'},location.origin);settings=globalThis.DVSettings.normalize({...settings,bossGuide:true});settingsInputs();mode='boss';selector.value=mode;enabled=true;haltReason='';persist();broadcast();update();};
   selector.onchange=()=>{mode=selector.value;haltReason=enabled?'持續自動遊玩，已切換模式':'已切換模式，請按開始';persist();broadcast();update();};

@@ -1,6 +1,6 @@
 # SUPER DIAMOND NO HAND
 
-使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.61**。
+使用 **ChatGPT 開發**的 Google Play Diamond Valley 台灣版自動遊玩擴充套件，支援 Edge 與 Chrome（Manifest V3）。目前版本 **0.4.62**。
 
 ## 0.4.54 採集到滿模式
 
@@ -16,8 +16,8 @@ Edge 實測：釣魚 500 已滿被跳過，礦石 285→318 結算成功，接�
 
 ## 下載與安裝
 
-- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.61.zip)
-- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.61.zip)
+- [Edge ZIP](SUPER-DIAMOND-NO-HAND-edge-0.4.62.zip)
+- [Chrome ZIP](SUPER-DIAMOND-NO-HAND-chrome-0.4.62.zip)
 
 這是供使用者自行載入的未封裝來源 ZIP，**並非瀏覽器商店上架或已簽章 CRX**。GitHub ZIP 頁面按下載圖示或 Download raw file，再解壓縮到固定資料夾。
 
@@ -232,3 +232,6 @@ python build.py
 
 
 2026-10-23：0.4.61 Edge 實測官方交貨計數61→69，釣魚／挖礦／打怪持續輪替，普通對話無可執行項目後立即續跑（打怪後約9.6秒完成下次釣魚提交），未再固定空等60秒。當時素材足夠，缺料自動採集與挖礦離場修正仍待實機驗證；Chrome尚未實機測試。13組本機測試通過。
+
+
+0.4.62：修正城鎮轉角路點被保留、但9像素抵達容差又禁止移動造成的死結。無法安全略過轉角時以較小容差靠近；無法繼續時重規劃，保留牆壁碰撞檢查。以實際位置3801.47/1349.59與路點3804/1356重現並新增回歸測試，修正版實機待重新載入。另0.4.61觀察挖礦採集結算後礦石243→276，已回城準備交貨；不代表所有離場路線均已驗證。

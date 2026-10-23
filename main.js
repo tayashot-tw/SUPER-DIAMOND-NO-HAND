@@ -197,11 +197,12 @@
 
     }
     const tolerance=Math.min(9,Math.max(3,observedStep/2+1));
-    while(path.length&&Math.abs(path[0].x-p.x)<=tolerance&&Math.abs(path[0].y-p.y)<=tolerance){if(path.length>1&&!globalThis.DVNavigation.routeSegmentClear(p,path[1],polygonList(level)))break;path.shift();}
+    const previousWaypoint=path[0];
+    const direction=globalThis.DVNavigation.routeDirection(p,path,routeAxis,polygonList(level),tolerance);
     if(!path.length){release();if(player.collidedObj===target)interact();else{path=null;}return;}
     const dx=path[0].x-p.x,dy=path[0].y-p.y;
     if(routeWaypoint!==path[0]){routeWaypoint=path[0];routeAxis=null;}
-    const direction=globalThis.DVNavigation.direction(p,path[0],routeAxis,tolerance);routeAxis=direction.axis;move(direction.code);
+    if(previousWaypoint!==path[0]){routeAxis=null;}routeAxis=direction.axis;move(direction.code);if(direction.corner&&!direction.code){path=null;release();return;}
     // Near a corner, release between control ticks so several game frames cannot overshoot it.
     const remaining=direction.axis==='x'?Math.abs(dx):Math.abs(dy);
     if(direction.code&&remaining<Math.max(24,observedStep*1.5)&&!navigationTimer){const code=direction.code;navigationTimer=setTimeout(()=>{key('keyup',code);held.delete(code);navigationTimer=null;},10);}

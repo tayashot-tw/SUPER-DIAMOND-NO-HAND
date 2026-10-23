@@ -39,6 +39,17 @@
     if(!axis)axis=Math.abs(dx)<=tolerance?'y':Math.abs(dy)<=tolerance?'x':Math.abs(dx)>Math.abs(dy)?'x':'y';
     return {axis,code:axis==='x'?(dx>0?'ArrowRight':'ArrowLeft'):(dy>0?'ArrowDown':'ArrowUp')};
   }
+  function routeDirection(position,path,previousAxis,polygons,tolerance=9){
+    let corner=false;
+    while(path.length&&Math.abs(path[0].x-position.x)<=tolerance&&Math.abs(path[0].y-position.y)<=tolerance){
+      if(path.length>1&&!routeSegmentClear(position,path[1],polygons)){corner=true;break;}
+      path.shift();previousAxis=null;
+    }
+    if(!path.length)return {code:null,axis:null,corner:false};
+    // A retained corner must use a smaller arrival radius than a skippable waypoint.
+    const result=direction(position,path[0],previousAxis,corner?Math.min(1,tolerance):tolerance);
+    return {...result,corner};
+  }
   function shouldReturnFishing(requestedMode,mode,rotate,s){
     return requestedMode==='random'&&mode==='fishing'&&rotate&&s.inFishing&&!s.inHub&&!s.fishingOpen&&!s.slider?.visible&&!s.loading&&!s.otherDialog&&s.visible&&s.online&&s.connected!==false&&!s.questReady;
   }
@@ -163,5 +174,5 @@
     for(let d=4;d<=32;d+=4){const foot={x:b.x+dx*d,y:b.y+dy*d+(b.height>=52?52:0),width:b.width,height:b.height>=52?b.height-52:b.height};if((polygons??[]).some(p=>globalThis.DVAutoplay.polygonIntersectsRect(p,foot)))return combatDirection(player,boss);}
     return code;
   }
-  globalThis.DVNavigation={routeSegmentClear,validBossStance,resetEscape,delivery,similarity,simplify,direction,shouldReturnFishing,dodge,bossAnchor,bossGuideDangers,bossAnchorBlocked,bossDirection,combatDirection,combatDangers};
+  globalThis.DVNavigation={routeDirection,routeSegmentClear,validBossStance,resetEscape,delivery,similarity,simplify,direction,shouldReturnFishing,dodge,bossAnchor,bossGuideDangers,bossAnchorBlocked,bossDirection,combatDirection,combatDangers};
 })();
