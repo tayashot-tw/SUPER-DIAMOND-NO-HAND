@@ -42,8 +42,20 @@
       }
       if(s.storyOpen||s.loading||s.otherDialog||s.submissionOpen||s.resultOpen)return {type:'wait',message:'等待目前介面關閉後搜尋支線'};
       for(const q of quests){if((this.cooldowns.get(id(q))??0)>now)continue;const npc=entities.find(e=>matchNpc(q,e));if(npc){this.active={id:id(q),npc,started:now,opened:false};return {type:'navigateMission',target:npc,message:'前往支線 NPC：'+q.title};}}
-      return {type:'wait',message:'目前沒有可明確對應的普通對話支線；其他任務請由官方清單確認'};
+      return {type:'wait',missionsIdle:true,message:'目前沒有可明確對應的普通對話支線；其他任務請由官方清單確認'};
     }
   }
-  globalThis.DVMissions={list,matchNpc,Planner};
+  class Daily {
+    constructor(){this.index=0;this.pending=null;this.dialogue=false;this.capped=false;this.lastCount=null;}
+    observe(count){
+      if(!Number.isFinite(count))return;
+      if(this.lastCount!==null&&count<this.lastCount){this.capped=false;this.index=0;this.dialogue=false;this.pending=null;}
+      if(this.pending&&count>this.pending.count){this.index=(this.pending.index+1)%3;this.dialogue=this.index===0;this.pending=null;}
+      this.lastCount=count;
+    }
+    finishDialogue(){if(!this.capped)this.dialogue=false;}
+    submitting(mode,count){if(Number.isFinite(count)&&!this.pending)this.pending={count,index:['fishing','mining','hunting'].indexOf(mode)};}
+    choose(data){if(this.capped||this.dialogue)return 'missions';for(let n=0;n<3;n++){const i=(this.index+n)%3,k=['fishing','mining','hunting'][i];if(data?.activities_data?.[k]?.has_played){this.index=i;return k;}}return 'missions';}
+  }
+  globalThis.DVMissions={list,matchNpc,Planner,Daily};
 })();

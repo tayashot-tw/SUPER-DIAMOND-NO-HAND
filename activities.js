@@ -1,5 +1,5 @@
 (() => {
-  const names={missions:'額外鑽石任務',fishing:'釣魚',mining:'挖礦',hunting:'打怪',boss:'Boss',treasury:'寶庫',riddle:'解謎'};
+  const names={daily:'日常任務',missions:'額外鑽石任務',fishing:'釣魚',mining:'挖礦',hunting:'打怪',boss:'Boss',treasury:'寶庫',riddle:'解謎'};
   const center=e=>e?.body&&({x:e.body.x+e.body.width/2,y:e.body.y+e.body.height/2});
   const near=(p,entities)=>entities.filter(e=>center(e)).sort((a,b)=>Math.hypot(center(a).x-p.x,center(a).y-p.y)-Math.hypot(center(b).x-p.x,center(b).y-p.y))[0];
   const active=e=>!!e&&!e.destroyed&&e.enabled!==false&&e.canInteract===true&&!e.isLocked?.();

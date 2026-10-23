@@ -262,4 +262,16 @@ User requests three-mode rotation running/stall check. Set autoBoss false via pa
 
 0.4.58 實機根因：Pixi顯示城鎮且官方HUD100/550，套件game=null/audit空；console載入game-RDZLHNOS.js，舊程式只攔截KRZLVEFN/74YGLLZX/6NMIDNT2。加入RDZLHNOS與modules.js只讀原生ResourceTiming/DOM標籤發現入口，精確同源同ALL_tw目錄及game-[hash].js，拒絕game_interactive與其他來源。初始化前包裝原生init，呼叫原函式保持this/args/return。已嘗試模組去重，未連接時750ms重新發現；無須遠端執行擴充套件更新。面板診斷moduleConnection列出hooked及attached。新版本需重載後驗證。
 
-0.4.59：移除planner masteryMax halt、ActivityPlanner masteryMax early return，釣魚等待復原監測不再排除滿熟練度。masteryMax仍可顯示官方狀態，不用來停止採集。mastery.test.cjs覆蓋三項滿熟練度續跑、交貨、官方每日上限和滿背包政策。待重新載入實測。
+0.4.61：移除planner masteryMax halt、ActivityPlanner masteryMax early return，釣魚等待復原監測不再排除滿熟練度。masteryMax仍可顯示官方狀態，不用來停止採集。mastery.test.cjs覆蓋三項滿熟練度續跑、交貨、官方每日上限和滿背包政策。待重新載入實測。
+
+
+## 0.4.61 日常任務與離場恢復
+選單選「日常任務：三項交貨＋對話支線」並按開始。依序處理釣魚、挖礦、打怪的目前交貨任務；素材不足自動進入對應小遊戲採集，足夠一份目前任務便回城交貨，不套用一般交貨倍數。官方交貨計數增加後才切換下一項；三項一輪後檢查普通對話支線，無可執行項目則稍候返回下一輪。未解鎖項目跳過；每日交貨達上限後只處理對話，官方計數重置後恢復。需選擇的對話仍等使用者處理，不自動抽獎、兌換或付費。
+挖礦等離場動作不再被危險避讓覆蓋；轉場期間停止移動並防止重複退出。原生轉場旗標逾30秒仍未完成時透過既有頻率限制重新連接，不強制修改遊戲旗標。新增日常排程與離場逾時測試；尚待重新載入後實機驗證。
+開發：missions.js 的 Daily 管理交貨輪次、伺服器確認及重置；main.js 串接採集、交貨、支線與轉場恢復。node daily.test.cjs、node tests.cjs 驗證。
+
+
+0.4.61：日常對話掃描無可執行 NPC 時立即回到交貨，不再固定等60秒；每日上限顯示明確等待訊息，日常素材欄改顯示目前任務單份需求。0.4.60 實機已觀察兩輪三項各減少20；0.4.61 待重新載入驗證。
+
+
+2026-10-23：0.4.61 Edge 實測官方交貨計數61→69，釣魚／挖礦／打怪持續輪替，普通對話無可執行項目後立即續跑（打怪後約9.6秒完成下次釣魚提交），未再固定空等60秒。當時素材足夠，缺料自動採集與挖礦離場修正仍待實機驗證；Chrome尚未實機測試。13組本機測試通過。
